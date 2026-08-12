@@ -1,5 +1,3 @@
-# hackathon-matching
-
 Matchowanie pojedynczych zgłoszeń uczestników w zespoły na hackathon — projekt studencki ALK. Monorepo: frontend (React) do przeglądu/edycji wyników matchowania + backend (FastAPI) z logiką dopasowania i API.
 
 ## Struktura repozytorium
