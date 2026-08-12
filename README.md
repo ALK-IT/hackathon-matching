@@ -1,15 +1,12 @@
 # hackathon-matching
 
-Matchowanie zgloszen w zespoly na hackathon - projekt studencki ALK.
-
-Projekt studencki ALK. Monorepo zawierające frontend (React) i backend (FastAPI).
+Matchowanie pojedynczych zgłoszeń uczestników w zespoły na hackathon — projekt studencki ALK. Monorepo: frontend (React) do przeglądu/edycji wyników matchowania + backend (FastAPI) z logiką dopasowania i API.
 
 ## Struktura repozytorium
 
 ```
 hackathon-matching/
-├── frontend/                  # React + Vite + TypeScript + Storybook (design system)
-│   └── src/design-system/     # Katalog komponentów UI (Button, tokens...)
+├── frontend/                  # React + Vite + TypeScript (lekki szkielet, bez Storybooka)
 ├── backend/                   # FastAPI + Python
 ├── .ai/specs/                 # Specyfikacje (spec-driven development)
 ├── scripts/ai-agents/         # Lokalni AI agenci: code/security/UX review
@@ -32,19 +29,6 @@ Tablica projektu (GitHub Projects): https://github.com/orgs/ALK-IT/projects/3
 Issues: [github.com/ALK-IT/hackathon-matching/issues](https://github.com/ALK-IT/hackathon-matching/issues) — zgłoszenia przez szablony (bug / propozycja funkcjonalności).
 
 Tablica ma pola **Szacowany czas (h)** i **Rzeczywisty czas (h)** na każdej karcie — wypełniaj przed startem i po zamknięciu zadania. Do granularnego logu w czasie: komentuj issue/PR w formacie `⏱ 2h - co robiłeś`; skill `/time-report` w Claude Code zlicza to per osoba i per zadanie.
-
-## Design system
-
-Wspólne komponenty UI żyją w [frontend/src/design-system/](frontend/src/design-system/) (tokeny w `tokens.ts`, np. `Button`). Katalog komponentów w Storybooku:
-
-```bash
-cd frontend
-npm run storybook
-```
-
-Wdrożony Storybook (auto po push do `main`, workflow `storybook-pages`): https://alk-it.github.io/hackathon-matching/
-
-Nowy współdzielony komponent UI → dodaj go tutaj (nie duplikuj w miejscu użycia) + plik `.stories.tsx`.
 
 ## AI agenci (code review / security review / UX review)
 

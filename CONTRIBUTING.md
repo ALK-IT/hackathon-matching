@@ -51,10 +51,6 @@ Dostępne w Claude Code w tym repo (`.claude/skills/`):
 | `/spec-status` | Audyt: statusy speców vs rzeczywiste PR-y/issues |
 | `/time-report` | Zlicza czas z komentarzy `⏱ Xh` per osoba/zadanie |
 
-## Design system
-
-Nowe współdzielone komponenty UI powstają w `frontend/src/design-system/` (+ `.stories.tsx` w Storybooku), nie duplikujemy przycisków/formularzy lokalnie w widokach. Kolory/spacing/typografia z `tokens.ts`, nie hardkodowane inline. Katalog: `npm run storybook` (w `frontend/`).
-
 ## Testy i jakość
 
 - Frontend: `npm run lint`, `npm run test -- --run`, `npm run build` (patrz [README.md](README.md)).
