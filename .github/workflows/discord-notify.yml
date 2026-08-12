@@ -1,0 +1,92 @@
+name: discord-notify
+
+on:
+  pull_request:
+    types: [opened, closed]
+  issues:
+    types: [opened, closed]
+  workflow_run:
+    workflows:
+      - frontend-ci
+      - backend-ci
+      - codeql
+      - gitleaks
+      - dependency-audit
+      - deploy-frontend
+      - deploy-backend
+    types: [completed]
+
+jobs:
+  pr-event:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wyślij powiadomienie na Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TITLE: ${{ github.event.pull_request.title }}
+          URL: ${{ github.event.pull_request.html_url }}
+          ACTION: ${{ github.event.action }}
+          MERGED: ${{ github.event.pull_request.merged }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then echo "Brak DISCORD_WEBHOOK_URL - pomijam"; exit 0; fi
+          if [ "$ACTION" = "opened" ]; then
+            MSG="🔀 Nowy PR: $TITLE — $URL"
+          elif [ "$MERGED" = "true" ]; then
+            MSG="✅ PR zmergowany: $TITLE — $URL"
+          else
+            MSG="❌ PR zamknięty bez merge: $TITLE — $URL"
+          fi
+          jq -n --arg content "$MSG" '{content: $content}' | \
+            curl -sf -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+
+  issue-event:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wyślij powiadomienie na Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TITLE: ${{ github.event.issue.title }}
+          URL: ${{ github.event.issue.html_url }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then echo "Brak DISCORD_WEBHOOK_URL - pomijam"; exit 0; fi
+          if [ "$ACTION" = "opened" ]; then
+            MSG="📋 Nowe issue: $TITLE — $URL"
+          else
+            MSG="🗄️ Issue zamknięte: $TITLE — $URL"
+          fi
+          jq -n --arg content "$MSG" '{content: $content}' | \
+            curl -sf -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+
+  workflow-status-event:
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wyślij powiadomienie na Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          NAME: ${{ github.event.workflow_run.name }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then echo "Brak DISCORD_WEBHOOK_URL - pomijam"; exit 0; fi
+          MSG=""
+          case "$NAME" in
+            deploy-frontend|deploy-backend)
+              if [ "$CONCLUSION" = "success" ]; then
+                MSG="🚀 Deploy OK: $NAME — $URL"
+              else
+                MSG="🔥 Deploy nieudany: $NAME ($CONCLUSION) — $URL"
+              fi
+              ;;
+            *)
+              if [ "$CONCLUSION" = "failure" ]; then
+                MSG="🔥 CI czerwone: $NAME na main — $URL"
+              fi
+              ;;
+          esac
+          if [ -z "$MSG" ]; then echo "Brak powodu do powiadomienia (conclusion=$CONCLUSION)"; exit 0; fi
+          jq -n --arg content "$MSG" '{content: $content}' | \
+            curl -sf -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"

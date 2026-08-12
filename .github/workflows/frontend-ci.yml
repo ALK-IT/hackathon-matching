@@ -1,0 +1,29 @@
+name: frontend-ci
+
+on:
+  # Bez filtra paths na pull_request: required status check musi się pojawić
+  # na KAŻDYM PR, inaczej branch protection wisi na "oczekiwany" check w nieskończoność
+  # dla PR-ów, które nie dotykają frontend/.
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test -- --run
+      - run: npm run build

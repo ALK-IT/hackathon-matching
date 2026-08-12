@@ -1,0 +1,37 @@
+name: Zgłoszenie błędu
+description: Zgłoś błąd w aplikacji
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Opis błędu
+      description: Co się dzieje i czego się spodziewano?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Kroki reprodukcji
+      description: Jak odtworzyć problem krok po kroku?
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Obszar
+      options:
+        - Frontend
+        - Backend
+        - Inne
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Dodatkowy kontekst
+      description: Zrzuty ekranu, logi, środowisko (przeglądarka, system)
