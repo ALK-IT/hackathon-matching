@@ -1,11 +1,11 @@
 # hackathon-matching
 
-Projekt studencki ALK. Monorepo: React (frontend) + FastAPI (backend).
+Projekt studencki ALK. Monorepo: React (frontend) + FastAPI (backend). Cel: matchowanie pojedynczych zgłoszeń uczestników w zespoły na hackaton (algorytm/heurystyka doboru grup na bazie danych zgłoszeniowych: umiejętności, preferencje, dostępność itp.), z API do uruchamiania matchowania i UI do przeglądu/edycji wyników. Praca skupiona na danych — logika matchowania i model danych zgłoszeń są do zaprojektowania przez zespół (patrz Spec-driven development niżej).
 
 ## Struktura
 
-- `frontend/` — React + Vite + TypeScript. Deploy: Vercel (auto na push do `main`). Komponenty UI w `src/design-system/` (Storybook), nie duplikuj ich lokalnie w widokach.
-- `backend/` — FastAPI + Python 3.12. Deploy: Railway (auto na push do `main`).
+- `frontend/` — React + Vite + TypeScript, lekki szkielet (bez Storybooka/design system — nie jest tu potrzebny). Deploy: Vercel (auto na push do `main`).
+- `backend/` — FastAPI + Python 3.12, na razie bare Hello World (bez bazy danych). Deploy: Railway (auto na push do `main`). Postgres (SQLAlchemy async + Alembic) + Redis (cache-aside) do dodania jako pierwszy spec — wzorzec: router → `app/services/` (logika + cache) → `app/repositories/` (jedyne miejsce z zapytaniami do bazy), patrz [SPEC-002 w hackathon-manager](https://github.com/ALK-IT/hackathon-manager) jako referencja tego wzorca.
 - `scripts/ai-agents/` — lokalni agenci AI (code/security/UX review), triggerowani etykietą `ai-review` na PR.
 
 ## Komendy
@@ -23,8 +23,6 @@ Backend (`cd backend`):
 - `ruff check .` — lint
 - `black --check .` — formatowanie
 - `pytest` — testy
-
-Frontend — design system / katalog komponentów: `npm run storybook` (w `frontend/`).
 
 Całość przez Docker: `docker compose up --build` (frontend: http://localhost:5173, backend: http://localhost:8000/docs). Patrz [README.md](../README.md#uruchomienie-w-dockerze).
 
