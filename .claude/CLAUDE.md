@@ -5,7 +5,7 @@ Projekt studencki ALK. Monorepo: React (frontend) + FastAPI (backend). Cel: matc
 ## Struktura
 
 - `frontend/` — React + Vite + TypeScript, lekki szkielet (bez Storybooka/design system — nie jest tu potrzebny). Deploy: Vercel (auto na push do `main`).
-- `backend/` — FastAPI + Python 3.12, na razie bare Hello World (bez bazy danych). Deploy: Railway (auto na push do `main`). Postgres (SQLAlchemy async + Alembic) + Redis (cache-aside) do dodania jako pierwszy spec — wzorzec: router → `app/services/` (logika + cache) → `app/repositories/` (jedyne miejsce z zapytaniami do bazy), patrz [SPEC-002 w hackathon-manager](https://github.com/ALK-IT/hackathon-manager) jako referencja tego wzorca.
+- `backend/` — FastAPI + Python 3.12, na razie bare Hello World (bez bazy danych). Deploy: Railway (auto na push do `main`). Postgres (SQLAlchemy async + Alembic) do dodania jako pierwszy spec — wzorzec: router → `app/services/` → `app/repositories/` (jedyne miejsce z zapytaniami do bazy), patrz [SPEC-002 w hackathon-manager](https://github.com/ALK-IT/hackathon-manager) jako referencja tego wzorca (tam jest tez Redis - u nas na razie pomijamy, brak takiej potrzeby).
 - `scripts/ai-agents/` — lokalni agenci AI (code/security/UX review), triggerowani etykietą `ai-review` na PR.
 
 ## Komendy

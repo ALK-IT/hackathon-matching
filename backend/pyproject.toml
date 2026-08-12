@@ -2,6 +2,10 @@
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint]
+# B008: wzorzec FastAPI Depends(...) w domyślnych argumentach jest tu zamierzony i standardowy.
+ignore = ["B008"]
+
 [tool.black]
 line-length = 100
 target-version = ["py312"]
@@ -9,3 +13,4 @@ target-version = ["py312"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+asyncio_mode = "auto"

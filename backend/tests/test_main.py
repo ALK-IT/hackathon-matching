@@ -15,3 +15,9 @@ def test_hello() -> None:
     response = client.get("/api/hello")
     assert response.status_code == 200
     assert "message" in response.json()
+
+
+def test_db_check() -> None:
+    response = client.get("/api/db-check")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "database": "connected"}
