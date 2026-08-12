@@ -91,7 +91,7 @@ cd backend && pytest
 
 ## Deploy
 
-- **Frontend** — Vercel, automatyczny deploy po merge do `main` (workflow `deploy-frontend`).
+- **Frontend** — Vercel, automatyczny deploy po merge do `main` (workflow `deploy-frontend`). Produkcja: https://hackathon-matching-chi.vercel.app
 - **Backend** — Railway, automatyczny deploy po merge do `main` (workflow `deploy-backend`).
 
 Wymagane sekrety repozytorium (Settings → Secrets and variables → Actions):
