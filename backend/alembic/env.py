@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 from app.db import DATABASE_URL, Base
+from app.models import Submission  # noqa: F401 - rejestruje tabelę w Base.metadata
 
 # Obiekt konfiguracji Alembica — dostęp do wartości z alembic.ini.
 config = context.config
@@ -20,8 +21,8 @@ config.set_main_option("sqlalchemy.url", DATABASE_URL.replace("%", "%%"))
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Metadane schematu dla `alembic revision --autogenerate`. Base nie ma jeszcze
-# żadnych modeli — pierwszy dojdzie razem ze zgłoszeniem uczestnika (issue #17).
+# Metadane schematu dla `alembic revision --autogenerate`. Modele muszą być
+# zaimportowane wyżej, żeby zdążyły się zarejestrować w Base.metadata.
 target_metadata = Base.metadata
 
 
