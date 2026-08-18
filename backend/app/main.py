@@ -4,8 +4,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
+from app.routers import submissions
 
 app = FastAPI(title="hackathon-matching API")
+
+app.include_router(submissions.router)
 
 app.add_middleware(
     CORSMiddleware,
