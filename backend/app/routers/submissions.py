@@ -28,3 +28,16 @@ async def create_submission(
             detail="Zgłoszenie z tym adresem e-mail już istnieje.",
         ) from None
     return SubmissionOut.model_validate(submission)
+
+
+@router.get("", response_model=list[SubmissionOut])
+async def list_submissions(
+    session: AsyncSession = Depends(get_session),
+) -> list[SubmissionOut]:
+    """Zwraca wszystkie zgłoszenia do wyświetlenia na froncie.
+
+    Brak zgłoszeń to poprawny stan (pusta lista), a nie błąd - stąd zwykłe
+    200, bez dodatkowej obsługi wyjątków.
+    """
+    submissions = await service.get_all(session)
+    return [SubmissionOut.model_validate(submission) for submission in submissions]

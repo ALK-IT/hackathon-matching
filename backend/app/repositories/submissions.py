@@ -1,3 +1,4 @@
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Submission
@@ -19,3 +20,9 @@ async def create_submission(session: AsyncSession, data: SubmissionCreate) -> Su
     session.add(submission)
     await session.flush()
     return submission
+
+
+async def list_submissions(session: AsyncSession) -> list[Submission]:
+    """Zwraca wszystkie zgłoszenia posortowane od najstarszego."""
+    result = await session.execute(select(Submission).order_by(Submission.created_at))
+    return list(result.scalars().all())
