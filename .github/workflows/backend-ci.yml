@@ -42,4 +42,8 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: ruff check .
       - run: black --check .
+      # Migracje przed testami: baza w CI startuje pusta, a testy endpointow
+      # potrzebuja prawdziwych tabel. Przy okazji sprawdza, czy migracje da sie
+      # zastosowac - bledna migracja zatrzyma sie tutaj, a nie na produkcji.
+      - run: alembic upgrade head
       - run: pytest

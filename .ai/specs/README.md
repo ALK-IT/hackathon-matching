@@ -18,5 +18,6 @@ Wzorowane na podejściu z [open-mercato](https://github.com/open-mercato/open-me
 | # | Tytuł | Status | Plik |
 |---|---|---|---|
 | SPEC-001 | Hello World — szkielet frontend/backend | Zaimplementowany | [SPEC-001-hello-world.md](SPEC-001-hello-world.md) |
+| SPEC-002 | Endpoint przyjmujący zgłoszenia uczestników | Proponowany | [SPEC-002-2026-08-18-post-submissions.md](SPEC-002-2026-08-18-post-submissions.md) |
 
 Zasady utrzymania tego indeksu i współpracy z agentami AI: [AGENTS.md](AGENTS.md).
