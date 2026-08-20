@@ -18,7 +18,12 @@ function extractErrorMessage(body: unknown): string | null {
   return null
 }
 
-function SubmissionForm() {
+type Props = {
+  /** Wywoływane po udanym zapisie - App używa tego, żeby odświeżyć listę. */
+  onSuccess?: () => void
+}
+
+function SubmissionForm({ onSuccess }: Props) {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [skills, setSkills] = useState('')
@@ -55,6 +60,7 @@ function SubmissionForm() {
       setFullName('')
       setEmail('')
       setSkills('')
+      onSuccess?.()
     } catch {
       setStatus('error')
       setErrorMessage(`Nie udało się połączyć z backendem (${API_URL}). Sprawdź, czy backend działa.`)
