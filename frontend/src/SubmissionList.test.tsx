@@ -3,8 +3,26 @@ import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/re
 import SubmissionList from './SubmissionList'
 
 const submissions = [
-  { id: 1, full_name: 'Jan Kowalski', email: 'jan@example.com', skills: 'python', created_at: '2026-08-20T10:00:00Z' },
-  { id: 2, full_name: 'Anna Nowak', email: 'anna@example.com', skills: 'react', created_at: '2026-08-20T11:00:00Z' },
+  {
+    id: 1,
+    full_name: 'Jan Kowalski',
+    email: 'jan@example.com',
+    skills: ['python', 'fastapi'],
+    experience_level: 'advanced',
+    preferred_role: 'backend',
+    availability: true,
+    created_at: '2026-08-20T10:00:00Z',
+  },
+  {
+    id: 2,
+    full_name: 'Anna Nowak',
+    email: 'anna@example.com',
+    skills: ['react'],
+    experience_level: 'beginner',
+    preferred_role: 'frontend',
+    availability: false,
+    created_at: '2026-08-20T11:00:00Z',
+  },
 ]
 
 function mockFetch(value: unknown, ok = true) {
@@ -29,10 +47,52 @@ describe('SubmissionList', () => {
 
     expect(await screen.findByText('Jan Kowalski')).toBeInTheDocument()
     expect(screen.getByText('anna@example.com')).toBeInTheDocument()
-    expect(screen.getByText('react')).toBeInTheDocument()
+    // Lista umiejętności jest łączona dopiero przy wyświetlaniu.
+    expect(screen.getByText('python, fastapi')).toBeInTheDocument()
 
     const [url] = fetchMock.mock.calls[0]
     expect(String(url)).toContain('/api/submissions')
+  })
+
+  it('pokazuje profil uczestnika po polsku, a nie surowe wartości z API', async () => {
+    mockFetch(submissions)
+
+    render(<SubmissionList />)
+
+    expect(await screen.findByText('Zaawansowany')).toBeInTheDocument()
+    expect(screen.getByText('Początkujący')).toBeInTheDocument()
+    expect(screen.getByText('Backend')).toBeInTheDocument()
+    expect(screen.queryByText('advanced')).not.toBeInTheDocument()
+  })
+
+  it('pokazuje dostępność jako Tak/Nie', async () => {
+    mockFetch(submissions)
+
+    render(<SubmissionList />)
+
+    expect(await screen.findByText('Tak')).toBeInTheDocument()
+    expect(screen.getByText('Nie')).toBeInTheDocument()
+  })
+
+  it('zgłoszenie bez profilu (sprzed rozszerzenia modelu) nie wywraca listy', async () => {
+    mockFetch([
+      {
+        id: 3,
+        full_name: 'Stare Zgłoszenie',
+        email: 'stare@example.com',
+        skills: ['python'],
+        experience_level: null,
+        preferred_role: null,
+        availability: true,
+        created_at: '2026-08-01T10:00:00Z',
+      },
+    ])
+
+    render(<SubmissionList />)
+
+    expect(await screen.findByText('Stare Zgłoszenie')).toBeInTheDocument()
+    // Dwie kolumny bez danych - poziom i rola.
+    expect(screen.getAllByText('—')).toHaveLength(2)
   })
 
   it('przy pustej bazie pokazuje komunikat, a nie pustą tabelę', async () => {
