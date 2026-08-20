@@ -29,3 +29,8 @@ async def submit(session: AsyncSession, payload: SubmissionCreate) -> Submission
         await session.rollback()
         raise DuplicateEmailError from exc
     return submission
+
+
+async def get_all(session: AsyncSession) -> list[Submission]:
+    """Zwraca wszystkie zgłoszenia do wyświetlenia na liście."""
+    return await repository.list_submissions(session)
