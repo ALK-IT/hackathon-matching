@@ -92,3 +92,25 @@ def test_duplicate_email_returns_409(email_prefix: str) -> None:
     second = client.post("/api/submissions", json=payload)
     assert second.status_code == 409
     assert "e-mail" in second.json()["detail"]
+
+
+def test_list_submissions_returns_created_submission(email_prefix: str) -> None:
+    """Sprawdza, że zgłoszenie założone przez POST pojawia się na liście GET.
+
+    Filtrujemy odpowiedź po przedrostku e-maila zamiast zakładać pustą
+    tabelę - w bazie mogą być rekordy z innych testów.
+    """
+    email = f"{email_prefix}anna@example.com"
+    created = client.post(
+        "/api/submissions",
+        json={"full_name": "Anna Nowak", "email": email, "skills": "python"},
+    )
+    assert created.status_code == 201
+
+    response = client.get("/api/submissions")
+
+    assert response.status_code == 200
+    matching = [item for item in response.json() if item["email"] == email]
+    assert len(matching) == 1
+    assert matching[0]["full_name"] == "Anna Nowak"
+    assert matching[0]["skills"] == "python"
