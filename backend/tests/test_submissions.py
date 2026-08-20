@@ -71,10 +71,24 @@ def test_create_submission_returns_201(email_prefix: str) -> None:
     assert body["created_at"]
 
 
-def test_invalid_email_returns_422() -> None:
-    response = client.post("/api/submissions", json=payload("to-nie-jest-email"))
+@pytest.mark.parametrize("email", ["to-nie-jest-email", "adam@cos"])
+def test_invalid_email_returns_422(email: str) -> None:
+    """Adres bez domeny z kropką też jest niepoprawny - pydantic go odrzuca."""
+    response = client.post("/api/submissions", json=payload(email))
 
     assert response.status_code == 422
+
+
+def test_validation_message_is_in_polish() -> None:
+    """Komunikat trafia wprost na formularz, więc musi być po polsku.
+
+    Pydantic tłumaczy się po angielsku ("The part after the @-sign is not
+    valid"), a uczestnik nie ma powodu tego oglądać.
+    """
+    response = client.post("/api/submissions", json=payload("adam@cos"))
+
+    messages = [error["msg"] for error in response.json()["detail"]]
+    assert messages == ["Podaj poprawny adres e-mail, np. jan.kowalski@example.com."]
 
 
 @pytest.mark.parametrize("full_name", ["", "   "])
