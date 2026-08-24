@@ -1,14 +1,20 @@
 from fastapi import Depends, FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
+from app.errors import validation_exception_handler
 from app.routers import submissions
 
 app = FastAPI(title="hackathon-matching API")
 
 app.include_router(submissions.router)
+
+# Domyślne komunikaty walidacji pydantica są po angielsku, a front pokazuje je
+# uczestnikowi wprost - stąd własny handler (patrz app/errors.py).
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 app.add_middleware(
     CORSMiddleware,
