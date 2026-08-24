@@ -33,7 +33,7 @@ Kryteria są **leksykograficzne**, nie ważone: rola rozstrzyga dopiero
 doświadczenia. Kolejność jest zamierzona — najpierw skład "na papierze",
 potem konkretni ludzie.
 
-### Jak to działa (trzy kroki)
+### Jak to działa (cztery kroki)
 
 1. **Puste zespoły.** `team_sizes` daje same rozmiary — ile zespołów
    i po ile osób.
@@ -47,8 +47,28 @@ potem konkretni ludzie.
    miejsce o danym poziomie wchodzi kandydat z najrzadszą w tym zespole rolą,
    przy remisie — z najmniejszym pokryciem umiejętności.
 
+4. **Naprawa wymianami.** Kroki 2-3 decydują po jednej osobie i nie wracają
+   do podjętych decyzji - ostatnie miejsca nie mają już wyboru. Naprawa patrzy
+   na skończony układ i przyjmuje każdą zamianę pary między zespołami, która
+   ściśle obniża `objective`; zamiana łamiąca gwarancję nie-beginnera jest
+   odrzucana nawet przy lepszym wyniku. Rozmiary zespołów nie mogą się przy
+   tym zepsuć z konstrukcji (zamiany 1-za-1).
+
 Przykład z issue: 3 × zaawansowany, 4 × średniozaawansowany, 2 × początkujący,
 limit 4 → trzy zespoły po 3 osoby o sumach punktów 7 / 6 / 6.
+
+### `objective` — wspólna miara układu
+
+Jawna funkcja oceny (niższa = lepsza): `100000 × rozpiętość sum punktów
++ 1000 × Σ rozpiętości ról + 1 × powtórzenia umiejętności w zespołach`.
+Wagi czynią hierarchię kryteriów w praktyce ścisłą przy skali hackathonu.
+Krok 4 optymalizuje dokładnie tę funkcję, a #26 może jej użyć jako punktu
+wyjścia do porównywania algorytmów - mierzymy wtedy to, co optymalizujemy.
+
+Zmierzone na siatce testowej (152 układy, 1064 pary rola × układ), po kroku 4:
+rozpiętość sum punktów średnio 0,53 i nigdy więcej niż 1; rozrzut ról ≤ 1
+w 99,8% przypadków (nigdy > 2); powtórzenia umiejętności o ~35% rzadsze niż
+w `random_teams`; mediana czasu 5 ms.
 
 ### Gwarancje (pilnowane przez testy w `tests/test_matching_balanced.py`)
 
@@ -59,13 +79,18 @@ limit 4 → trzy zespoły po 3 osoby o sumach punktów 7 / 6 / 6.
 - rozrzut sum punktów jest nie większy niż w `random_teams` na tych samych
   danych (test porównawczy na 50 losowych zestawach);
 - bez `rng` wynik jest deterministyczny; `rng` miesza tylko kolejność wejścia,
-  czyli sposób rozstrzygania remisów — gwarancje wyżej obowiązują tak samo;
+  czyli sposób rozstrzygania remisów — gwarancje wyżej obowiązują tak samo
+  (naprawa wymianami też jest deterministyczna: stała kolejność skanu);
 - wejściowa lista pozostaje nietknięta.
+
+Testy własnościowe (siatki i agregaty) są w
+`tests/test_matching_balanced_properties.py`.
 
 ### Czego (jeszcze) nie robi
 
 Nie patrzy na `availability`, nie traktuje `fullstack` jako częściowego
 pokrycia frontendu i backendu, nie zna twardych ograniczeń typu "te osoby chcą
-być razem". Wyrównanie sum punktów jest zachłanne, a nie optymalne — dokładny
-podział to problem NP-trudny, a przy skali hackatonu różnica jest pomijalna.
+być razem". Wyrównanie jest heurystyczne (zachłanny plan + lokalna naprawa wymianami
+par), a nie optymalne — dokładny podział to problem NP-trudny, a naprawa nie
+wykona rotacji trzech osób naraz. Przy skali hackatonu różnica jest pomijalna.
 Metryka do porównywania algorytmów powstanie w #26.

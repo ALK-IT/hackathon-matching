@@ -2,7 +2,7 @@
 
 Baseline (`baseline.random_teams`) tasuje listę i tnie ją na kawałki - może
 z tego wyjść zespół samych początkujących albo pięciu frontendowców bez nikogo
-od backendu. Ten moduł rozwiązuje to samo zadanie w trzech krokach, świadomie
+od backendu. Ten moduł rozwiązuje to samo zadanie w czterech krokach, świadomie
 rozdzielonych, bo każdy z nich optymalizuje co innego:
 
 1. **Puste zespoły** - ile zespołów i jakiej wielkości. Kryterium: nikt nie
@@ -16,6 +16,11 @@ rozdzielonych, bo każdy z nich optymalizuje co innego:
    który najbardziej uzupełnia zespół. Kryterium: różnorodność ról (nie dwóch
    frontendowców, gdy czeka backendowiec), a przy remisie - mniejsze pokrycie
    umiejętności, które w zespole już są.
+4. **Naprawa wymianami** - przegląd gotowego układu: zamiany par uczestników
+   między zespołami zostają, gdy obniżają jawną funkcję celu (`objective`)
+   i nie łamią gwarancji nie-beginnera. Kroki 1-3 decydują po jednej osobie
+   i nie wracają do wcześniejszych decyzji - naprawa widzi całość i domyka to,
+   czego zachłanny przebieg nie mógł przewidzieć.
 
 Rozdzielenie kroku 2 od 3 jest tu istotne: gdyby wybierać ludzi "od razu",
 optymalizacja ról psułaby rozkład doświadczenia (wzięlibyśmy backendowca-
@@ -77,6 +82,49 @@ def team_experience_points(team: list[Participant]) -> int:
     jakości dopasowania (#26) do porównywania algorytmów na tych samych danych.
     """
     return sum(experience_points(member) for member in team)
+
+
+# Wagi funkcji celu. Rozpiętości mnożone są tak, żeby hierarchia kryteriów była
+# w praktyce ścisła: jedna jednostka doświadczenia przebija każdą realną sumę
+# kar za role, a jednostka ról - kary za umiejętności. Zapas jest duży (100x)
+# przy skali hackathonu; przy tysiącach zgłoszeń wagi wymagałyby rewizji.
+_EXPERIENCE_WEIGHT = 100_000
+_ROLE_WEIGHT = 1_000
+_SKILL_WEIGHT = 1
+
+_MAX_REPAIR_PASSES = 8
+
+
+def objective(teams: list[list[Participant]]) -> int:
+    """Ocena całego układu zespołów - niższa jest lepsza.
+
+    Składniki, zgodnie z hierarchią kryteriów modułu:
+    - rozpiętość sum punktów doświadczenia (max - min między zespołami),
+    - dla każdej zadeklarowanej roli: rozpiętość liczebności między zespołami
+      (None to brak danych, nie rola - bez kary za jego skupienie),
+    - powtórzenia umiejętności w zespołach (wystąpienia minus różne,
+      sumowane po zespołach).
+
+    To ta sama funkcja, którą optymalizuje krok 4 (naprawa wymianami) - #26
+    może jej użyć jako punktu wyjścia do porównywania algorytmów, wtedy
+    optymalizujemy dokładnie to, co mierzymy.
+    """
+    if not teams:
+        return 0
+
+    sums = [team_experience_points(team) for team in teams]
+    score = _EXPERIENCE_WEIGHT * (max(sums) - min(sums))
+
+    for role in PreferredRole:
+        counts = [sum(1 for member in team if member.preferred_role == role) for team in teams]
+        score += _ROLE_WEIGHT * (max(counts) - min(counts))
+
+    for team in teams:
+        mentions = sum(len(member.skills) for member in team)
+        distinct = len({skill for member in team for skill in member.skills})
+        score += _SKILL_WEIGHT * (mentions - distinct)
+
+    return score
 
 
 def _plan_experience_slots(
@@ -150,6 +198,50 @@ def _best_candidate_index(candidates: list[Participant], team: list[Participant]
     )
 
 
+def _swap_repair[T: Participant](teams: list[list[T]]) -> list[list[T]]:
+    """Krok 4: wymiany par między zespołami, dopóki obniżają `objective`.
+
+    Kroki 1-3 sadzają ludzi po kolei i nie wracają do podjętych decyzji -
+    ostatnie miejsca nie mają już wyboru. Naprawa patrzy na skończony układ
+    i przyjmuje każdą zamianę 1-za-1, która ściśle obniża wynik; rozmiary
+    zespołów nie mogą się przy tym zepsuć z konstrukcji.
+
+    Strażnik: zamiana łamiąca gwarancję nie-beginnera jest odrzucana nawet
+    przy lepszym wyniku. Stała kolejność skanu i stałe kryterium akceptacji
+    dają deterministyczny wynik. Limit przejść domyka czas przy patologiach;
+    w praktyce zbieżność następuje po 2-3 przejściach.
+    """
+    people = [member for team in teams for member in team]
+    non_beginners = sum(1 for member in people if experience_points(member) >= 2)
+    guarantee_applies = non_beginners >= len(teams)
+
+    def guarantee_holds() -> bool:
+        if not guarantee_applies:
+            return True
+        return all(any(experience_points(member) >= 2 for member in team) for team in teams)
+
+    # `current` przeliczane tylko po zaakceptowanej zamianie, nie dla każdego
+    # kandydata - to zbija koszt skanu o połowę bez zmiany wyniku.
+    current = objective(teams)
+    for _ in range(_MAX_REPAIR_PASSES):
+        improved = False
+        for i in range(len(teams)):
+            for j in range(i + 1, len(teams)):
+                for a in range(len(teams[i])):
+                    for b in range(len(teams[j])):
+                        teams[i][a], teams[j][b] = teams[j][b], teams[i][a]
+                        candidate = objective(teams)
+                        if candidate < current and guarantee_holds():
+                            current = candidate
+                            improved = True
+                        else:
+                            teams[i][a], teams[j][b] = teams[j][b], teams[i][a]
+        if not improved:
+            break
+
+    return teams
+
+
 # `[T: Participant]`: funkcja czyta pola opisane protokołem, ale zwraca dokładnie
 # ten typ, który dostała - `list[Submission]` na wejściu daje
 # `list[list[Submission]]` na wyjściu, a nie `list[list[Participant]]`.
@@ -170,7 +262,10 @@ def balanced_teams[T: Participant](
       o poziomie wyższym niż początkujący jest co najmniej tyle, ile zespołów,
       każdy zespół dostaje przynajmniej jedną taką osobę,
     - przy równym poziomie preferowana jest osoba o roli, której w zespole
-      jeszcze nie ma.
+      jeszcze nie ma,
+    - gotowy układ przechodzi naprawę wymianami (krok 4): zostają wyłącznie
+      zamiany ściśle obniżające `objective`, a zamiana łamiąca gwarancję
+      nie-beginnera jest odrzucana nawet przy lepszym wyniku.
 
     To heurystyka, nie optymalizacja dokładna: idealne wyrównanie sum punktów
     to problem NP-trudny (podział zbioru), a przy kilkudziesięciu zgłoszeniach
@@ -222,4 +317,5 @@ def balanced_teams[T: Participant](
             chosen = candidates.pop(_best_candidate_index(candidates, teams[team_index]))
             teams[team_index].append(chosen)
 
-    return teams
+    # Krok 4: naprawa wymianami - szczegóły w docstringu `_swap_repair` i README.
+    return _swap_repair(teams)
