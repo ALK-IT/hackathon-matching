@@ -33,3 +33,19 @@ class PreferredRole(StrEnum):
     DATA = "data"
     PM = "pm"
     OTHER = "other"
+
+
+class MatchingAlgorithm(StrEnum):
+    """Wariant algorytmu, którym uruchamiamy dopasowanie.
+
+    Zbiór jest zamknięty, bo nazwa przychodzi z query stringa i trafia prosto
+    do wyboru funkcji - dowolny tekst od klienta nie ma prawa decydować o tym,
+    co uruchomimy (patrz SECURITY.md: waliduj wszystkie wejścia).
+
+    `RANDOM` zostaje w API celowo, mimo że `BALANCED` jest lepszy: to punkt
+    odniesienia, do którego porównujemy wynik (issue #23 i #26). Bez niego
+    nie da się na żywych danych pokazać, co daje balansowanie.
+    """
+
+    BALANCED = "balanced"
+    RANDOM = "random"
