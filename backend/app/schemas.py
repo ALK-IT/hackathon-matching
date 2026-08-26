@@ -73,3 +73,19 @@ class SubmissionOut(BaseModel):
     preferred_role: PreferredRole | None
     availability: bool
     created_at: datetime
+
+
+class TeamOut(BaseModel):
+    """Zespół zwracany przez API razem z pełnym składem.
+
+    Skład jest zagnieżdżony, a nie podany jako lista identyfikatorów, bo
+    jedyny sensowny widok wyniku matchowania to "kto z kim" - przy samych
+    `id` front musiałby dociągać każde zgłoszenie osobno, żeby cokolwiek
+    pokazać.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    members: list[SubmissionOut]
+    created_at: datetime

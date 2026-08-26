@@ -1,8 +1,18 @@
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import ARRAY, Boolean, CheckConstraint, DateTime, Enum, String, func, text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import (
+    ARRAY,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    String,
+    func,
+    text,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 from app.enums import ExperienceLevel, PreferredRole
@@ -87,5 +97,64 @@ class Submission(Base):
     # wypełnić tę kolumnę w istniejących rekordach bez zgadywania czegokolwiek
     # innego niż najczęstszy przypadek.
     availability: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+
+    # Zespół, do którego dopasowanie przypisało to zgłoszenie. Kolumna po
+    # stronie zgłoszenia, a nie tabela łącząca, bo dzięki temu ograniczenie
+    # "jedno zgłoszenie = najwyżej jeden zespół" pilnuje sam schemat: kolumna
+    # mieści jedną wartość i nie da się jej obejść ani błędem w kodzie, ani
+    # ręcznym INSERT-em. Tabela many-to-many dopuszczałaby stan, którego i tak
+    # musielibyśmy zabraniać osobnym ograniczeniem unikalności.
+    #
+    # NULL znaczy "jeszcze nie dopasowany" - tak wygląda każde zgłoszenie
+    # przed pierwszym uruchomieniem matchowania.
+    #
+    # ondelete="SET NULL": skasowanie zespołu nie kasuje ludzi, tylko zdejmuje
+    # im przypisanie. Zgłoszenie jest danymi od uczestnika, zespół - wynikiem
+    # algorytmu, który przeliczamy do skutku; kasowanie pierwszego razem
+    # z drugim byłoby utratą danych nie do odzyskania.
+    #
+    # index=True, bo po tej kolumnie chodzi każde wczytanie składów zespołów
+    # (JOIN/`selectinload` po `team_id`), a Postgres nie zakłada indeksu na
+    # kluczu obcym sam z siebie - inaczej niż na kluczu głównym.
+    team_id: Mapped[int | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    team: Mapped["Team | None"] = relationship(back_populates="members")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Team(Base):
+    """Zespół utworzony przez uruchomienie dopasowania.
+
+    Model jest celowo pusty poza identyfikatorem i czasem powstania: cała
+    treść zespołu to jego skład, a ten trzyma kolumna `Submission.team_id`.
+    Nazwa czy opis zespołu nie należą do wyniku algorytmu - gdyby miały
+    powstać, będzie to osobne zadanie i osobna kolumna.
+
+    Każde uruchomienie matchowania buduje zespoły od zera (patrz
+    `app/repositories/teams.py`), więc `created_at` mówi wprost, kiedy
+    powstał aktualny podział.
+    """
+
+    __tablename__ = "teams"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # Skład zespołu. Relacja jest wygodą warstwy serwisu i schematów - zapytania
+    # nadal należą wyłącznie do repozytorium (patrz CLAUDE.md).
+    #
+    # Uwaga na asynchroniczność: domyślne leniwe ładowanie kolekcji dosypuje
+    # SELECT dopiero przy odczycie atrybutu, a w kodzie async kończy się to
+    # wyjątkiem `MissingGreenlet` zamiast danymi. Dlatego repozytorium wczytuje
+    # zespoły jawnie przez `selectinload`, a świeżo utworzone mają skład
+    # ustawiony wprost w Pythonie - żadna ścieżka nie liczy na leniwe doczytanie.
+    #
+    # `order_by`: bez tego kolejność członków zespołu w odpowiedzi API zależy
+    # od tego, co akurat zwróci baza, i potrafi się zmieniać między żądaniami
+    # przy tych samych danych.
+    members: Mapped[list["Submission"]] = relationship(
+        back_populates="team", order_by="Submission.id"
+    )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
