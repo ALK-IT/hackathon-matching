@@ -6,11 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.errors import validation_exception_handler
-from app.routers import submissions
+from app.routers import matching, submissions
 
 app = FastAPI(title="hackathon-matching API")
 
 app.include_router(submissions.router)
+app.include_router(matching.router)
 
 # Domyślne komunikaty walidacji pydantica są po angielsku, a front pokazuje je
 # uczestnikowi wprost - stąd własny handler (patrz app/errors.py).
