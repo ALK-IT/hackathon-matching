@@ -22,6 +22,11 @@ FIELD_MESSAGES: dict[str, str] = {
     "experience_level": "Wybierz poziom doświadczenia z listy.",
     "preferred_role": "Wybierz preferowaną rolę z listy.",
     "availability": "Zaznacz lub odznacz dostępność.",
+    # Parametry matchowania przychodzą w query stringu, nie w formularzu, ale
+    # trafiają do tej samej odpowiedzi 422 - bez wpisu tutaj uczestnik zobaczyłby
+    # ogólne "Niepoprawne dane w formularzu.", które nic mu nie mówi o adresie.
+    "team_size": "Rozmiar zespołu musi być liczbą od 1 do 20.",
+    "algorithm": "Wybierz algorytm matchowania: 'balanced' albo 'random'.",
 }
 
 DEFAULT_MESSAGE = "Niepoprawne dane w formularzu."
@@ -33,8 +38,12 @@ def _field_name(location: tuple[Any, ...]) -> str | None:
     Ścieżka wygląda jak ("body", "email") albo ("body", "skills", 0) dla
     błędu w konkretnej pozycji listy - w obu przypadkach interesuje nas
     drugi element.
+
+    Poza ciałem żądania sprawdzamy też query string ("query", "team_size"):
+    parametry matchowania podaje się właśnie tam, a błąd w nich wraca tym
+    samym kanałem co błąd formularza.
     """
-    if len(location) >= 2 and location[0] == "body":
+    if len(location) >= 2 and location[0] in ("body", "query"):
         name = location[1]
         return name if isinstance(name, str) else None
     return None
