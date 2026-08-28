@@ -20,5 +20,6 @@ Wzorowane na podejściu z [open-mercato](https://github.com/open-mercato/open-me
 | SPEC-001 | Hello World — szkielet frontend/backend | Zaimplementowany | [SPEC-001-hello-world.md](SPEC-001-hello-world.md) |
 | SPEC-002 | Endpoint przyjmujący zgłoszenia uczestników | Proponowany | [SPEC-002-2026-08-18-post-submissions.md](SPEC-002-2026-08-18-post-submissions.md) |
 | SPEC-003 | Algorytm matchowania — balans doświadczenia, ról i umiejętności | Proponowany | [SPEC-003-2026-08-24-algorytm-matchowania.md](SPEC-003-2026-08-24-algorytm-matchowania.md) |
+| SPEC-004 | Endpoint uruchamiający matchowanie i zapis zespołów | Proponowany | [SPEC-004-2026-08-26-endpoint-matchowania.md](SPEC-004-2026-08-26-endpoint-matchowania.md) |
 
 Zasady utrzymania tego indeksu i współpracy z agentami AI: [AGENTS.md](AGENTS.md).

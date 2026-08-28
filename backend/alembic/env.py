@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 from app.db import DATABASE_URL, Base
-from app.models import Submission  # noqa: F401 - rejestruje tabelę w Base.metadata
+from app.models import Submission, Team  # noqa: F401 - rejestruje tabele w Base.metadata
 
 # Obiekt konfiguracji Alembica — dostęp do wartości z alembic.ini.
 config = context.config
