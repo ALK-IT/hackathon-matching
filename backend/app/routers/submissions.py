@@ -27,6 +27,11 @@ async def create_submission(
             status_code=status.HTTP_409_CONFLICT,
             detail="Zgłoszenie z tym adresem e-mail już istnieje.",
         ) from None
+    except service.SubmissionLimitReachedError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Osiągnięto limit zgłoszeń - rejestracja jest zamknięta.",
+        ) from None
     return SubmissionOut.model_validate(submission)
 
 

@@ -56,4 +56,14 @@ async def run_matching(
             status_code=status.HTTP_409_CONFLICT,
             detail="Brak zgłoszeń do zmatchowania - najpierw dodaj uczestników.",
         ) from None
+    except service.MatchingInProgressError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Matchowanie już trwa - poczekaj na zakończenie poprzedniego przebiegu.",
+        ) from None
+    except service.TooManyParticipantsError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Zbyt wiele zgłoszeń do zmatchowania - skontaktuj się z organizatorem.",
+        ) from None
     return [TeamOut.model_validate(team) for team in teams]

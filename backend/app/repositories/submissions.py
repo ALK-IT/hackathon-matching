@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Submission
@@ -26,3 +26,9 @@ async def list_submissions(session: AsyncSession) -> list[Submission]:
     """Zwraca wszystkie zgłoszenia posortowane od najstarszego."""
     result = await session.execute(select(Submission).order_by(Submission.created_at))
     return list(result.scalars().all())
+
+
+async def count_submissions(session: AsyncSession) -> int:
+    """Liczba wszystkich zgloszen - do limitu przyjmowania nowych (#57)."""
+    result = await session.execute(select(func.count()).select_from(Submission))
+    return int(result.scalar_one())

@@ -10,6 +10,19 @@ class DuplicateEmailError(Exception):
     """Zgłoszenie z tym adresem e-mail już istnieje w bazie."""
 
 
+class SubmissionLimitReachedError(Exception):
+    """Baza osiągnęła limit zgłoszeń - nowych nie przyjmujemy (#57)."""
+
+
+# Limit wyprowadzony z pomiarów, nie z powietrza: największe realne hackathony
+# to 1-2 tys. osób, a przy 3 tys. rekordów niepaginowany GET /api/submissions
+# zwraca ~0,6-0,7 MB JSON-u - dziesięciokrotnie więcej byłoby już problemem.
+# Limit ma zatrzymać MASOWE fałszywe zgłoszenia (wektor DoS z #57), nie
+# 3001. uczestnika; stąd też sprawdzenie licznikiem bez locka - wyścig na
+# krawędzi może przepuścić pojedyncze rekordy ponad limit i to jest OK.
+MAX_TOTAL_SUBMISSIONS = 3000
+
+
 async def submit(session: AsyncSession, payload: SubmissionCreate) -> Submission:
     """Przyjmuje zgłoszenie uczestnika i zatwierdza je w bazie.
 
@@ -22,6 +35,9 @@ async def submit(session: AsyncSession, payload: SubmissionCreate) -> Submission
     więc IntegrityError może tu oznaczać wyłącznie duplikat adresu. Gdy dojdą
     kolejne ograniczenia, trzeba będzie rozróżniać je po nazwie.
     """
+    if await repository.count_submissions(session) >= MAX_TOTAL_SUBMISSIONS:
+        raise SubmissionLimitReachedError
+
     try:
         submission = await repository.create_submission(session, payload)
         await session.commit()
