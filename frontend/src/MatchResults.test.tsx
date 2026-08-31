@@ -129,4 +129,18 @@ describe('MatchResults', () => {
     resolveFetch({ ok: true, status: 201, json: async () => [] })
     await waitFor(() => expect(button).not.toBeDisabled())
   })
+
+  it('odpowiedź niebędąca tablicą daje komunikat błędu, nie biały ekran', async () => {
+    // Analogiczne zabezpieczenie do #66 z listy zgłoszeń - obiekt zamiast
+    // tablicy zespołów nie ma prawa wywrócić renderu.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => ({ detail: 'x' }) }),
+    )
+
+    render(<MatchResults />)
+    fireEvent.click(screen.getByRole('button', { name: /uruchom matchowanie/i }))
+
+    expect(await screen.findByText(/nieoczekiwaną odpowiedź/i)).toBeInTheDocument()
+  })
 })

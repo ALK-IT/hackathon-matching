@@ -65,8 +65,19 @@ function MatchResults() {
         return
       }
 
-      const data: Team[] = await response.json()
-      setTeams(data)
+      const data: unknown = await response.json()
+
+      // Ten sam problem, który #66 załatał w liście zgłoszeń: rzutowanie
+      // na wiarę wywraca render (teams.map na nie-tablicy) poza try/catch.
+      // Własny komunikat zamiast rzutu do catch - "nie udało się połączyć"
+      // byłoby tu nieprawdą, połączenie przecież zadziałało.
+      if (!Array.isArray(data)) {
+        setStatus('error')
+        setErrorMessage('Backend zwrócił nieoczekiwaną odpowiedź. Spróbuj ponownie.')
+        return
+      }
+
+      setTeams(data as Team[])
       setStatus('ready')
     } catch {
       setStatus('error')
