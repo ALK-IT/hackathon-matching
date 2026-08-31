@@ -103,6 +103,14 @@ Wymagane sekrety repozytorium (Settings → Secrets and variables → Actions):
 | `RAILWAY_SERVICE` | Nazwa/ID serwisu Railway (backend) |
 | `DISCORD_WEBHOOK_URL` | Powiadomienia na Discordzie (opcjonalnie) |
 
+Zmienne środowiskowe backendu (ustawiane w panelu Railway, nie w sekretach GitHuba):
+
+| Zmienna | Domyślnie | Do czego służy |
+|---|---|---|
+| `DATABASE_URL` | lokalny Postgres z `docker-compose.yml` | Połączenie z bazą; `postgres://` i `postgresql://` są normalizowane do `+asyncpg` |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173`, `http://127.0.0.1:5173`, adres produkcyjny frontendu | Lista adresów po przecinku, którym przeglądarka pozwoli czytać odpowiedzi API. **Pusta wartość nie oznacza „wpuść wszystkich" — zostawia listę domyślną.** Po zmianie adresu frontendu trzeba ją zaktualizować, inaczej front dostanie błąd CORS |
+| `CORS_ALLOWED_ORIGIN_REGEX` | wyłączone | Wzorzec dodatkowych adresów, np. podglądów z Vercela, które dostają adres per gałąź: `^https://hackathon-matching-[a-z0-9-]+\.vercel\.app$` |
+
 ## Zasady współpracy
 
 Pełny opis w [CONTRIBUTING.md](CONTRIBUTING.md). W skrócie:
