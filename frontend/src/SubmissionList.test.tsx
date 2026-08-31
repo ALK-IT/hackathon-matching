@@ -135,4 +135,49 @@ describe('SubmissionList', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
   })
+
+  // --- testy z issue #62 i #66 (retroaktywny przeglad) ---
+
+  it('starsza odpowiedź nie nadpisuje nowszej przy równoległym odświeżeniu (#62)', async () => {
+    // Scenariusz z issue: formularz podbija reloadToken w momencie, gdy user
+    // klika Odśwież. Dwa fetch-e w locie; starszy wraca PÓŹNIEJ i nie ma prawa
+    // nadpisać świeżych danych. Kolejność rozwiązania kontrolujemy ręcznie.
+    let resolveFirst: (value: unknown) => void = () => {}
+    let resolveSecond: (value: unknown) => void = () => {}
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(new Promise((resolve) => (resolveFirst = resolve)))
+      .mockReturnValueOnce(new Promise((resolve) => (resolveSecond = resolve)))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { rerender } = render(<SubmissionList reloadToken={0} />)
+    rerender(<SubmissionList reloadToken={1} />)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+
+    const fresh = [{ ...submissions[0], full_name: 'Świeża Odpowiedź' }]
+    const stale = [{ ...submissions[0], id: 99, full_name: 'Stara Odpowiedź' }]
+
+    resolveSecond({ ok: true, status: 200, json: async () => fresh })
+    expect(await screen.findByText('Świeża Odpowiedź')).toBeInTheDocument()
+
+    resolveFirst({ ok: true, status: 200, json: async () => stale })
+    // Chwila na (błędne) przetworzenie starej odpowiedzi, gdyby strażnika brakło.
+    await new Promise((r) => setTimeout(r, 50))
+
+    expect(screen.getByText('Świeża Odpowiedź')).toBeInTheDocument()
+    expect(screen.queryByText('Stara Odpowiedź')).not.toBeInTheDocument()
+  })
+
+  it('odpowiedź niebędąca tablicą daje komunikat błędu, nie biały ekran (#66)', async () => {
+    // Rzutowanie `as Submission[]` bez walidacji: obiekt zamiast tablicy
+    // wywracał render (submissions.map nie istnieje) poza try/catch z load().
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ detail: 'niespodzianka' }) }),
+    )
+
+    render(<SubmissionList />)
+
+    expect(await screen.findByText(/nie udało się pobrać zgłoszeń/i)).toBeInTheDocument()
+  })
 })

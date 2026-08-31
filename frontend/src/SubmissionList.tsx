@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   EXPERIENCE_LEVEL_LABELS,
   PREFERRED_ROLE_LABELS,
@@ -40,15 +40,31 @@ function SubmissionList({ reloadToken = 0 }: Props) {
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [status, setStatus] = useState<Status>('loading')
 
+  // Numer ostatniego żądania. Gdy dwa fetch-e biegną równolegle (formularz
+  // podbił reloadToken w chwili kliknięcia "Odśwież"), starsza odpowiedź
+  // potrafi wrócić później i nadpisać świeższą - user widzi listę bez właśnie
+  // dodanego zgłoszenia (#62). Każde wywołanie load() bierze kolejny numer,
+  // a po każdym await sprawdza, czy wciąż jest najnowsze; przeterminowana
+  // odpowiedź (także błędna!) jest wyrzucana zamiast zapisywana.
+  const requestSeq = useRef(0)
+
   const load = useCallback(async () => {
+    const seq = ++requestSeq.current
     setStatus('loading')
     try {
       const response = await fetch(`${API_URL}/api/submissions`)
       if (!response.ok) throw new Error(`Backend odpowiedział ${response.status}`)
-      const data: Submission[] = await response.json()
-      setSubmissions(data)
+      const data: unknown = await response.json()
+      if (seq !== requestSeq.current) return
+
+      // Bez tej walidacji rzutowanie "na wiarę" wywracało render
+      // (submissions.map na nie-tablicy) poza try/catch - patrz #66.
+      if (!Array.isArray(data)) throw new Error('Backend zwrócił nieoczekiwany kształt danych')
+
+      setSubmissions(data as Submission[])
       setStatus('ready')
     } catch {
+      if (seq !== requestSeq.current) return
       setStatus('error')
     }
   }, [])
