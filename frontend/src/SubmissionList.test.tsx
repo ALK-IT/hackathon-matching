@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, cleanup, act } from '@testing-library/react'
 import SubmissionList from './SubmissionList'
 
 const submissions = [
@@ -105,6 +105,8 @@ describe('SubmissionList', () => {
   })
 
   it('gdy backend nie odpowiada, pokazuje błąd zamiast pustego ekranu', async () => {
+    // load() celowo loguje przyczynę błędu - wyciszamy, żeby log testów był czysty.
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('brak połączenia')))
 
     render(<SubmissionList />)
@@ -161,16 +163,23 @@ describe('SubmissionList', () => {
     expect(await screen.findByText('Świeża Odpowiedź')).toBeInTheDocument()
 
     resolveFirst({ ok: true, status: 200, json: async () => stale })
-    // Chwila na (błędne) przetworzenie starej odpowiedzi, gdyby strażnika brakło.
-    await new Promise((r) => setTimeout(r, 50))
+    // Przepchnięcie mikrotasków zamiast sztywnego setTimeout (uwaga z review
+    // #82): (błędne) przetworzenie starej odpowiedzi ma szansę zajść, a test
+    // nie śpi na ślepo i nie flake'uje na wolnym CI.
+    await act(async () => {
+      await Promise.resolve()
+    })
 
-    expect(screen.getByText('Świeża Odpowiedź')).toBeInTheDocument()
-    expect(screen.queryByText('Stara Odpowiedź')).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('Świeża Odpowiedź')).toBeInTheDocument()
+      expect(screen.queryByText('Stara Odpowiedź')).not.toBeInTheDocument()
+    })
   })
 
   it('odpowiedź niebędąca tablicą daje komunikat błędu, nie biały ekran (#66)', async () => {
     // Rzutowanie `as Submission[]` bez walidacji: obiekt zamiast tablicy
     // wywracał render (submissions.map nie istnieje) poza try/catch z load().
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ detail: 'niespodzianka' }) }),

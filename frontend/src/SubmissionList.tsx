@@ -63,8 +63,11 @@ function SubmissionList({ reloadToken = 0 }: Props) {
 
       setSubmissions(data as Submission[])
       setStatus('ready')
-    } catch {
+    } catch (error) {
       if (seq !== requestSeq.current) return
+      // UI dostaje jeden ogólny komunikat, ale przy diagnozie w terenie
+      // warto widzieć oryginalną przyczynę (uwaga z review #82).
+      console.warn('Nie udało się pobrać zgłoszeń:', error)
       setStatus('error')
     }
   }, [])
