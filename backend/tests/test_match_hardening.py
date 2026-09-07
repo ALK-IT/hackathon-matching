@@ -1,8 +1,10 @@
 """Testy zabezpieczeń matchowania: lock (#56), limity i budżet pracy (#57)."""
 
 import asyncio
+import time
 from uuid import uuid4
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -92,6 +94,49 @@ def test_matching_available_again_after_lock_released(email_prefix: str) -> None
     response = client.post("/api/match?team_size=2")
 
     assert response.status_code == 201
+
+
+def test_two_real_parallel_match_requests_one_wins_one_gets_409(
+    email_prefix: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Uwaga z review #83: pełny cykl weź-policz-zwolnij pod realną nakładką.
+
+    Dwa PRAWDZIWE żądania POST /api/match naraz (httpx.AsyncClient +
+    asyncio.gather), nie ręcznie trzymany zamek. Algorytm jest spowolniony
+    wrapperem, żeby nakładka była gwarantowana, a nie zależna od timingu.
+    Ten test przechodzi tylko dzięki asyncio.to_thread w serwisie: bez niego
+    pierwszy przebieg blokowałby event loop, drugi nie ruszyłby przed końcem
+    pierwszego i oba skończyłyby z 201.
+    """
+    for i in range(2):
+        assert client.post("/api/submissions", json=_payload(email_prefix, i)).status_code == 201
+
+    from app.enums import MatchingAlgorithm
+
+    real_algorithm = matching_service.ALGORITHMS[MatchingAlgorithm.BALANCED]
+
+    def slow_algorithm(submissions, team_size):
+        time.sleep(0.4)
+        return real_algorithm(submissions, team_size)
+
+    monkeypatch.setitem(matching_service.ALGORITHMS, MatchingAlgorithm.BALANCED, slow_algorithm)
+
+    async def scenario() -> list[httpx.Response]:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as async_client:
+            return list(
+                await asyncio.gather(
+                    async_client.post("/api/match?team_size=2"),
+                    async_client.post("/api/match?team_size=2"),
+                )
+            )
+
+    first, second = asyncio.run(scenario())
+
+    codes = sorted([first.status_code, second.status_code])
+    assert codes == [201, 409]
+    loser = first if first.status_code == 409 else second
+    assert "już trwa" in loser.json()["detail"]
 
 
 def test_submission_limit_returns_409(email_prefix: str, monkeypatch: pytest.MonkeyPatch) -> None:

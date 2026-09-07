@@ -244,6 +244,9 @@ def _swap_repair[T: Participant](teams: list[list[T]]) -> list[list[T]]:
                     for b in range(len(teams[j])):
                         # Budżet pracy (#57): koszt jednej ewaluacji rośnie
                         # liniowo z liczbą uczestników, stąd taka jednostka.
+                        # Naliczamy PRZED próbą, więc płacą też kandydaci
+                        # odrzuceni przez strażnika - budżet jest górnym
+                        # oszacowaniem pracy, celowo konserwatywnym.
                         # Wyjście w środku skanu jest bezpieczne - dotychczas
                         # przyjęte zamiany zostają, układ jest poprawny.
                         work += participant_count

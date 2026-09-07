@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -86,7 +87,13 @@ async def run_matching(
     if len(submissions) > MAX_MATCHED_PARTICIPANTS:
         raise TooManyParticipantsError
 
-    grouped = ALGORITHMS[algorithm](submissions, team_size)
+    # Czyste CPU w osobnym wątku (uwaga z review #83): synchroniczne liczenie
+    # w async handlerze blokowałoby cały event loop - przez czas przebiegu
+    # proces nie odpowiadałby na ŻADNE żądanie, nawet zwykłe GET-y, a 409
+    # "już trwa" nigdy nie miałby okazji paść w obrębie jednego workera.
+    # Algorytm nie dotyka sesji bazy, więc przeniesienie do wątku jest
+    # bezpieczne; zamek advisory żyje przy połączeniu i czeka na wynik.
+    grouped = await asyncio.to_thread(ALGORITHMS[algorithm], submissions, team_size)
 
     await teams_repository.clear_teams(session)
     teams = await teams_repository.create_teams(session, grouped)
