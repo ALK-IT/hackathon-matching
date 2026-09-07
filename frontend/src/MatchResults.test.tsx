@@ -52,6 +52,9 @@ const teams = [
 describe('MatchResults', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    // Matchowanie ma teraz potwierdzenie window.confirm - domyślnie "tak",
+    // a test odmowy nadpisuje tego spy'a u siebie.
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
 
   afterEach(() => {
@@ -142,5 +145,38 @@ describe('MatchResults', () => {
     fireEvent.click(screen.getByRole('button', { name: /uruchom matchowanie/i }))
 
     expect(await screen.findByText(/nieoczekiwaną odpowiedź/i)).toBeInTheDocument()
+  })
+
+  it('odmowa w oknie potwierdzenia nie wysyła żadnego żądania', () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<MatchResults />)
+    fireEvent.click(screen.getByRole('button', { name: /uruchom matchowanie/i }))
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('pusta lista zespołów pokazuje komunikat zamiast znikać w nicość', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => [] }),
+    )
+
+    render(<MatchResults />)
+    fireEvent.click(screen.getByRole('button', { name: /uruchom matchowanie/i }))
+
+    expect(await screen.findByText(/nie powstał żaden zespół/i)).toBeInTheDocument()
+  })
+
+  it('komunikat błędu jest alertem z tekstowym prefiksem, nie samym kolorem', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('brak połączenia')))
+
+    render(<MatchResults />)
+    fireEvent.click(screen.getByRole('button', { name: /uruchom matchowanie/i }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toMatch(/^Błąd: /)
   })
 })

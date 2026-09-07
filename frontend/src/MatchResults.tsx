@@ -4,8 +4,11 @@ import type { Submission } from './SubmissionList'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
-// Rozmiar zespołu na sztywno - zgodnie z issue #27. Backend przyjmuje 1-20,
-// więc gdy dojdzie pole wyboru, wystarczy zamienić stałą na stan komponentu.
+// Maksymalny rozmiar zespołu - zgodnie z issue #27 bez pola wyboru. Uwaga:
+// backend traktuje team_size jako GÓRNY LIMIT, nie docelowy rozmiar (przy
+// 7 osobach wyjdą zespoły 3+2+2, nie 3+3+1) - nagłówek pokazuje realną
+// liczebność. Backend przyjmuje 1-20; gdy dojdzie pole wyboru, wystarczy
+// zamienić stałą na stan komponentu.
 const TEAM_SIZE = 3
 
 export type Team = {
@@ -48,6 +51,12 @@ function MatchResults() {
   // matchowanie ZMIENIA stan (kasuje poprzedni podział), więc nie może
   // odpalać się samo. To ta sama zasada, dla której backend używa POST.
   const runMatching = async () => {
+    // POST /api/match kasuje istniejący podział i liczy nowy - dopóki
+    // endpoint jest bez autoryzacji (#54), potwierdzenie chroni przynajmniej
+    // przed odruchowym nadpisaniem gotowych zespołów (uwaga z review).
+    if (!window.confirm('Uruchomienie zastąpi obecny podział na zespoły. Kontynuować?')) {
+      return
+    }
     setStatus('loading')
     setErrorMessage(null)
 
@@ -98,13 +107,28 @@ function MatchResults() {
         <p>Kliknij „Uruchom matchowanie", żeby podzielić zgłoszonych uczestników na zespoły.</p>
       )}
 
-      {status === 'loading' && <p>Układanie zespołów...</p>}
+      {status === 'loading' && <p role="status">Układanie zespołów...</p>}
 
-      {status === 'error' && errorMessage && <p style={{ color: 'crimson' }}>{errorMessage}</p>}
+      {/* role="alert" ogłasza błąd czytnikom ekranu, a prefiks tekstowy
+          sygnalizuje go niezależnie od koloru (WCAG 1.4.1 - uwaga z review). */}
+      {status === 'error' && errorMessage && (
+        <p role="alert" style={{ color: 'crimson' }}>
+          Błąd: {errorMessage}
+        </p>
+      )}
+
+      {/* Dziś nieosiągalne (pusta baza ucina wcześniej na 409), ale gdyby
+          algorytm kiedyś oddał pustą listę, stan nie może zniknąć w nicość. */}
+      {status === 'ready' && teams.length === 0 && (
+        <p>Matchowanie wykonane, ale nie powstał żaden zespół.</p>
+      )}
 
       {status === 'ready' &&
         teams.map((team, index) => (
-          <article key={team.id} style={{ border: '1px solid #ccc', borderRadius: '4px', padding: '.75rem 1rem', marginTop: '1rem' }}>
+          // Key i numer nagłówka z tego samego źródła (uwaga z review): lista
+          // jest podmieniana w całości po każdym przebiegu, nigdy nie
+          // przestawiana w miejscu, więc indeks jest tu stabilnym kluczem.
+          <article key={index} style={{ border: '1px solid #ccc', borderRadius: '4px', padding: '.75rem 1rem', marginTop: '1rem' }}>
             <h3 style={{ fontSize: '1rem', margin: '0 0 .5rem' }}>
               Zespół {index + 1} ({team.members.length} os.)
             </h3>
