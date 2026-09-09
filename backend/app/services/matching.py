@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,22 @@ from app.repositories import teams as teams_repository
 
 class NoSubmissionsError(Exception):
     """W bazie nie ma żadnego zgłoszenia, więc nie ma z czego układać zespołów."""
+
+
+class MatchingInProgressError(Exception):
+    """Inny przebieg matchowania właśnie trwa - równoległy jest odrzucany (#56)."""
+
+
+class TooManyParticipantsError(Exception):
+    """Zgłoszeń jest więcej, niż matchowanie sensownie obsłuży (#57)."""
+
+
+# Limit wejścia do algorytmu. CPU pilnuje budżet pracy w _swap_repair (patrz
+# balanced.py), więc ta stała chroni tylko rzeczy wtórne: odpowiedź JSON
+# z pełnymi składami przy 2000 osób to już ~0,5 MB. Żaden realny hackathon
+# w to nie uderzy - limit istnieje na wypadek masowych fałszywych zgłoszeń,
+# które przecisnęły się mimo limitu w POST /api/submissions.
+MAX_MATCHED_PARTICIPANTS = 2000
 
 
 # Mapa "nazwa z API -> funkcja". Dzięki niej router nie musi wiedzieć nic
@@ -57,11 +74,26 @@ async def run_matching(
     `team_sizes`); router odsiewa takie wartości wcześniej, ale funkcja jest
     wywoływalna także poza HTTP i nie zakłada, że ktoś ją przed tym ochronił.
     """
+    # Zamek przed czymkolwiek innym: dwa równoległe przebiegi czytające te
+    # same zgłoszenia i niezależnie kasujące/budujące zespoły mogą zostawić
+    # niespójny stan (#56). Odmowa zamiast kolejkowania - patrz docstring
+    # try_acquire_matching_lock.
+    if not await teams_repository.try_acquire_matching_lock(session):
+        raise MatchingInProgressError
+
     submissions = await submissions_repository.list_submissions(session)
     if not submissions:
         raise NoSubmissionsError
+    if len(submissions) > MAX_MATCHED_PARTICIPANTS:
+        raise TooManyParticipantsError
 
-    grouped = ALGORITHMS[algorithm](submissions, team_size)
+    # Czyste CPU w osobnym wątku (uwaga z review #83): synchroniczne liczenie
+    # w async handlerze blokowałoby cały event loop - przez czas przebiegu
+    # proces nie odpowiadałby na ŻADNE żądanie, nawet zwykłe GET-y, a 409
+    # "już trwa" nigdy nie miałby okazji paść w obrębie jednego workera.
+    # Algorytm nie dotyka sesji bazy, więc przeniesienie do wątku jest
+    # bezpieczne; zamek advisory żyje przy połączeniu i czeka na wynik.
+    grouped = await asyncio.to_thread(ALGORITHMS[algorithm], submissions, team_size)
 
     await teams_repository.clear_teams(session)
     teams = await teams_repository.create_teams(session, grouped)

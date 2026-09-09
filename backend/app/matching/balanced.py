@@ -94,6 +94,16 @@ _SKILL_WEIGHT = 1
 
 _MAX_REPAIR_PASSES = 8
 
+# Budżet pracy naprawy wymianami, w jednostkach "ewaluacja objective × liczba
+# uczestników". Zmierzone (siatka syntetyczna, ten sam kod): ~1 mln jednostek
+# na sekundę, więc 3 mln to twardy sufit ~3 s niezależnie od liczby zgłoszeń.
+# Do ~120 uczestników pełna zbieżność mieści się w budżecie - wynik jest
+# bitowo identyczny jak bez limitu; powyżej naprawa kończy się częściowa,
+# co jest łagodne: pierwsze wymiany dają największe zyski, a wszystkie twarde
+# gwarancje pochodzą z faz 1-3. Jednostki pracy zamiast sekund, bo limit
+# czasowy łamałby determinizm (ten sam input różne wyniki pod obciążeniem).
+_MAX_REPAIR_WORK = 3_000_000
+
 
 def objective(teams: list[list[Participant]]) -> int:
     """Ocena całego układu zespołów - niższa jest lepsza.
@@ -220,6 +230,9 @@ def _swap_repair[T: Participant](teams: list[list[T]]) -> list[list[T]]:
             return True
         return all(any(experience_points(member) >= 2 for member in team) for team in teams)
 
+    participant_count = len(people)
+    work = 0
+
     # `current` przeliczane tylko po zaakceptowanej zamianie, nie dla każdego
     # kandydata - to zbija koszt skanu o połowę bez zmiany wyniku.
     current = objective(teams)
@@ -229,6 +242,16 @@ def _swap_repair[T: Participant](teams: list[list[T]]) -> list[list[T]]:
             for j in range(i + 1, len(teams)):
                 for a in range(len(teams[i])):
                     for b in range(len(teams[j])):
+                        # Budżet pracy (#57): koszt jednej ewaluacji rośnie
+                        # liniowo z liczbą uczestników, stąd taka jednostka.
+                        # Naliczamy PRZED próbą, więc płacą też kandydaci
+                        # odrzuceni przez strażnika - budżet jest górnym
+                        # oszacowaniem pracy, celowo konserwatywnym.
+                        # Wyjście w środku skanu jest bezpieczne - dotychczas
+                        # przyjęte zamiany zostają, układ jest poprawny.
+                        work += participant_count
+                        if work > _MAX_REPAIR_WORK:
+                            return teams
                         teams[i][a], teams[j][b] = teams[j][b], teams[i][a]
                         candidate = objective(teams)
                         if candidate < current and guarantee_holds():

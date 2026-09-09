@@ -1,7 +1,28 @@
-from sqlalchemy import delete, update
+from sqlalchemy import delete, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Submission, Team
+
+# Klucz advisory locka serializujacego przebiegi matchowania. Dowolna stala
+# 64-bitowa - wazne tylko, zeby byla jedna i ta sama we wszystkich instancjach
+# backendu (lock zyje w Postgresie, wiec dziala miedzy procesami i maszynami,
+# inaczej niz asyncio.Lock, ktory widzi tylko wlasny proces).
+MATCHING_LOCK_KEY = 823_047_001
+
+
+async def try_acquire_matching_lock(session: AsyncSession) -> bool:
+    """Probuje zajac zamek przebiegu matchowania; False = inny przebieg trwa.
+
+    pg_try_advisory_xact_lock nie czeka - odpowiada natychmiast, dzieki czemu
+    rownolegle wywolanie dostaje jasna odmowe (409) zamiast wisiec w kolejce
+    i po cichu nadpisac wynik poprzednika sekunde pozniej (decyzja zespolu:
+    odmawiamy, nie kolejkujemy). Zamek jest transakcyjny: Postgres zwalnia go
+    sam przy commit/rollback, wiec nie da sie go "zapomniec" po bledzie.
+    """
+    result = await session.execute(
+        text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": MATCHING_LOCK_KEY}
+    )
+    return bool(result.scalar_one())
 
 
 async def clear_teams(session: AsyncSession) -> None:
