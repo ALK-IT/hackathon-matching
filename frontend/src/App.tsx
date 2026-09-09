@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import './App.css'
+import MatchResults from './MatchResults'
 import SubmissionForm from './SubmissionForm'
 import SubmissionList from './SubmissionList'
 
@@ -16,6 +17,7 @@ function App() {
       <p>Zgłoś się na hackathon:</p>
       <SubmissionForm onSuccess={() => setReloadToken((token) => token + 1)} />
       <SubmissionList reloadToken={reloadToken} />
+      <MatchResults />
     </main>
   )
 }
