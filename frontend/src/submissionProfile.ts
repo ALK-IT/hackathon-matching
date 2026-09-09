@@ -28,6 +28,24 @@ export const PREFERRED_ROLE_LABELS: Record<PreferredRole, string> = {
   other: 'Inna',
 }
 
+/** Limity pól zgłoszenia - lustro `backend/app/schemas.py`.
+ *
+ * Backend jest jedynym miejscem, które te limity naprawdę egzekwuje; tutaj
+ * powtarzamy je po to, żeby uczestnik dowiedział się o przekroczeniu PRZED
+ * wysłaniem, a nie z odpowiedzi 422 po kliknięciu "Wyślij" (#63).
+ *
+ * Rozjazd z backendem daje najgorszy możliwy efekt: formularz przepuszcza,
+ * serwer odrzuca. Przy zmianie `Field(max_length=...)` w schemas.py trzeba
+ * poprawić i tutaj - dlatego wartości siedzą w jednym miejscu, a nie
+ * rozsypane po atrybutach JSX.
+ */
+export const SUBMISSION_LIMITS = {
+  fullNameMaxLength: 200,
+  emailMaxLength: 320,
+  skillMaxLength: 50,
+  maxSkills: 20,
+} as const
+
 /** Rozbija listę umiejętności wpisaną po przecinkach na tablicę dla API.
  *
  * Puste fragmenty ("python,,react", "react, ") wypadają - backend odrzuciłby
