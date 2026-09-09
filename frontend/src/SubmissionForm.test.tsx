@@ -119,4 +119,28 @@ describe('SubmissionForm', () => {
 
     expect(await screen.findByText(/już istnieje/i)).toBeInTheDocument()
   })
+
+  it('błąd walidacji 422 (detail jako tablica pydantic) pokazuje komunikaty (#67)', async () => {
+    // Prawdziwy kształt 422 z FastAPI: detail to lista obiektów z msg.
+    // Dotąd testowany był wyłącznie detail-string (409), więc ta gałąź
+    // extractErrorMessage była martwa dla CI.
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        detail: [
+          { loc: ['body', 'email'], msg: 'Podaj poprawny adres e-mail.', type: 'value_error' },
+          { loc: ['body', 'skills'], msg: 'Podaj co najmniej jedną umiejętność.', type: 'too_short' },
+        ],
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<SubmissionForm />)
+    fillForm()
+    fireEvent.click(screen.getByRole('button', { name: /wyślij zgłoszenie/i }))
+
+    expect(await screen.findByText(/Podaj poprawny adres e-mail\./)).toBeInTheDocument()
+    expect(screen.getByText(/Podaj co najmniej jedną umiejętność\./)).toBeInTheDocument()
+  })
 })
