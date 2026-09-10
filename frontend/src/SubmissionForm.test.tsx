@@ -88,7 +88,9 @@ describe('SubmissionForm', () => {
     // wysłaniu formularza z konsoli.
     fireEvent.submit(container.querySelector('form')!)
 
-    expect(await screen.findByText(/wypełnij wszystkie pola/i)).toBeInTheDocument()
+    // Po #65 komunikat wskazuje konkretne pola, a nie zbiorcze "wypełnij wszystko".
+    expect(await screen.findByText('Wybierz poziom doświadczenia.')).toBeInTheDocument()
+    expect(screen.getByText('Wybierz preferowaną rolę.')).toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -101,7 +103,9 @@ describe('SubmissionForm', () => {
     fireEvent.change(screen.getByLabelText(/umiejętności/i), { target: { value: ' , , ' } })
     fireEvent.submit(container.querySelector('form')!)
 
-    expect(await screen.findByText(/wypełnij wszystkie pola/i)).toBeInTheDocument()
+    // Sedno #65: pole WYGLĄDA na wypełnione, więc ogólne "wypełnij wszystkie
+    // pola" czytało się jak awaria aplikacji. Komunikat musi tłumaczyć powód.
+    expect(await screen.findByText(/same przecinki to za mało/i)).toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -142,5 +146,135 @@ describe('SubmissionForm', () => {
 
     expect(await screen.findByText(/Podaj poprawny adres e-mail\./)).toBeInTheDocument()
     expect(screen.getByText(/Podaj co najmniej jedną umiejętność\./)).toBeInTheDocument()
+  })
+  // --- testy z issues #63 (limity), #64 (a11y) i #65 (konkretne komunikaty) ---
+
+  it('wskazuje każde brakujące pole osobno zamiast jednego komunikatu (#65)', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { container } = render(<SubmissionForm />)
+    fireEvent.submit(container.querySelector('form')!)
+
+    expect(await screen.findByText('Podaj imię i nazwisko.')).toBeInTheDocument()
+    expect(screen.getByText('Podaj adres e-mail.')).toBeInTheDocument()
+    expect(screen.getByText('Podaj co najmniej jedną umiejętność.')).toBeInTheDocument()
+    expect(screen.getByText('Wybierz poziom doświadczenia.')).toBeInTheDocument()
+    expect(screen.getByText('Wybierz preferowaną rolę.')).toBeInTheDocument()
+    expect(screen.queryByText(/wypełnij wszystkie pola/i)).not.toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('pola tekstowe mają maxLength zgodny z limitami backendu (#63)', () => {
+    render(<SubmissionForm />)
+
+    expect(screen.getByLabelText(/imię i nazwisko/i)).toHaveAttribute('maxlength', '200')
+    expect(screen.getByLabelText(/email/i)).toHaveAttribute('maxlength', '320')
+  })
+
+  it('licznik pokazuje liczbę wpisanych umiejętności na bieżąco (#63)', () => {
+    render(<SubmissionForm />)
+
+    expect(screen.getByText(/0 z 20 umiejętności/i)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/umiejętności/i), {
+      target: { value: 'python, react, sql' },
+    })
+
+    expect(screen.getByText(/3 z 20 umiejętności/i)).toBeInTheDocument()
+  })
+
+  it('odrzuca listę dłuższą niż 20 umiejętności przed wysłaniem (#63)', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { container } = render(<SubmissionForm />)
+    fillForm()
+    fireEvent.change(screen.getByLabelText(/umiejętności/i), {
+      target: { value: Array.from({ length: 21 }, (_, i) => `skill${i}`).join(', ') },
+    })
+    fireEvent.submit(container.querySelector('form')!)
+
+    expect(await screen.findByText(/najwyżej 20 umiejętności \(masz 21\)/i)).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('odrzuca umiejętność dłuższą niż 50 znaków przed wysłaniem (#63)', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { container } = render(<SubmissionForm />)
+    fillForm()
+    fireEvent.change(screen.getByLabelText(/umiejętności/i), {
+      target: { value: `python, ${'x'.repeat(51)}` },
+    })
+    fireEvent.submit(container.querySelector('form')!)
+
+    expect(await screen.findByText(/najwyżej 50 znaków/i)).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('błędne pole dostaje aria-invalid i wskazuje swój komunikat (#64)', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+
+    const { container } = render(<SubmissionForm />)
+    fireEvent.submit(container.querySelector('form')!)
+
+    const field = await screen.findByLabelText(/imię i nazwisko/i)
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+
+    // Powiązanie musi wskazywać na element, który naprawdę istnieje i niesie
+    // komunikat - samo aria-describedby z martwym id nic nie daje.
+    const describedBy = field.getAttribute('aria-describedby')!
+    expect(document.getElementById(describedBy)).toHaveTextContent('Podaj imię i nazwisko.')
+  })
+
+  it('fokus przechodzi na pierwsze błędne pole w kolejności formularza (#64)', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+
+    const { container } = render(<SubmissionForm />)
+    fireEvent.submit(container.querySelector('form')!)
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByLabelText(/imię i nazwisko/i)),
+    )
+
+    // Po uzupełnieniu pierwszego pola fokus ma iść na kolejne błędne, a nie
+    // wracać na początek formularza.
+    fireEvent.change(screen.getByLabelText(/imię i nazwisko/i), {
+      target: { value: 'Jan Kowalski' },
+    })
+    fireEvent.submit(container.querySelector('form')!)
+
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText(/email/i)))
+  })
+
+  it('komunikat błędu z backendu jest ogłaszany jako alert (#64)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 409,
+        json: async () => ({ detail: 'Zgłoszenie z tym adresem e-mail już istnieje.' }),
+      }),
+    )
+
+    render(<SubmissionForm />)
+    fillForm()
+    fireEvent.click(screen.getByRole('button', { name: /wyślij zgłoszenie/i }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/już istnieje/i)
+  })
+
+  it('komunikat sukcesu jest ogłaszany jako status (#64)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => ({}) }))
+
+    render(<SubmissionForm />)
+    fillForm()
+    fireEvent.click(screen.getByRole('button', { name: /wyślij zgłoszenie/i }))
+
+    const status = await screen.findByRole('status')
+    expect(status).toHaveTextContent('Zgłoszenie wysłane')
   })
 })

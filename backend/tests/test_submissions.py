@@ -91,6 +91,33 @@ def test_validation_message_is_in_polish() -> None:
     assert messages == ["Podaj poprawny adres e-mail, np. jan.kowalski@example.com."]
 
 
+@pytest.mark.parametrize(
+    ("overrides", "expected"),
+    [
+        ({"full_name": "x" * 201}, "Podaj imię i nazwisko."),
+        ({"skills": ["x" * 51]}, "Podaj od 1 do 20 umiejętności, każda o długości do 50 znaków."),
+        (
+            {"skills": [f"s{i}" for i in range(21)]},
+            "Podaj od 1 do 20 umiejętności, każda o długości do 50 znaków.",
+        ),
+        ({"experience_level": "ekspert"}, "Wybierz poziom doświadczenia z listy."),
+        ({"preferred_role": "kucharz"}, "Wybierz preferowaną rolę z listy."),
+    ],
+)
+def test_wszystkie_bledy_walidacji_sa_po_polsku(overrides: dict[str, Any], expected: str) -> None:
+    """#61: po polsku ma być KAŻDY błąd walidacji, nie tylko ten o e-mailu.
+
+    Test obok sprawdzał wyłącznie adres e-mail, więc regresja w pozostałych
+    polach (limit długości, lista umiejętności, wartość spoza enuma) przeszłaby
+    CI bez śladu, a uczestnik zobaczyłby w formularzu angielskie zdanie
+    w rodzaju "List should have at most 20 items after validation, not 21".
+    """
+    response = client.post("/api/submissions", json=payload("jan@example.com", **overrides))
+
+    assert response.status_code == 422
+    assert [error["msg"] for error in response.json()["detail"]] == [expected]
+
+
 @pytest.mark.parametrize("full_name", ["", "   "])
 def test_empty_full_name_returns_422(full_name: str) -> None:
     """Same spacje też muszą odpaść - schemat obcina białe znaki przed walidacją."""
