@@ -61,11 +61,19 @@ class Submission(Base):
     # przed błędem naszego kodu i ręcznym UPDATE-em (patrz SECURITY.md).
     # Nazwy muszą się zgadzać z tymi w migracji, inaczej autogenerate zobaczy
     # różnicę tam, gdzie jej nie ma.
+    #
+    # To samo dotyczy e-maila: trzymamy go wyłącznie małymi literami (#59).
+    # Sprowadza go do nich `SubmissionCreate`, a CHECK odrzuca każdy zapis,
+    # który tę normalizację ominął. Razem z unikalnością wyklucza to adresy
+    # różniące się tylko wielkością liter - dla ASCII, polskich liter i niemal
+    # całego Unicode. Wyjątki to tureckie "İ" i grecka końcowa sigma, które
+    # Python zmniejsza inaczej niż Postgres; świadomie akceptujemy ten margines.
     __table_args__ = (
         CheckConstraint(
             _allowed_values("experience_level", ExperienceLevel), name="experience_level"
         ),
         CheckConstraint(_allowed_values("preferred_role", PreferredRole), name="preferred_role"),
+        CheckConstraint("email = lower(email)", name="email_lowercase"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
