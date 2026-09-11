@@ -184,3 +184,4 @@ Do `allow_headers` w `app/main.py` dochodzi `"Authorization"`. Komentarz w tym m
 - 2026-09-11 — status: Zaakceptowany, spec idzie do rozbicia na issues
 - 2026-09-11 — rezygnacja z sesji przesuwanej na rzecz stałego, 8-godzinnego czasu życia tokena (decyzja: skradziony token nie może dać się przedłużać; efekt uboczny — prostsza konstrukcja, bez sufitu absolutnego i nagłówka odnawiającego)
 - 2026-09-11 — dodano ostrzeżenie z odliczaniem na 10 minut przed wygaśnięciem sesji (bez automatycznego przedłużania — przycisk prowadzi do logowania)
+- 2026-09-11 — rozbito na issues: #119 (model organizatora), #120 (endpoint logowania), #121 (frontend); istniejące #54 i #55 pozostają i realizują ochronę endpointów. Kolejność: #119 → #120 → #121 → #54 + #55
