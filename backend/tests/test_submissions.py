@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db import DATABASE_URL
@@ -136,6 +137,83 @@ def test_duplicate_email_returns_409(email_prefix: str) -> None:
     second = client.post("/api/submissions", json=duplicate)
     assert second.status_code == 409
     assert "e-mail" in second.json()["detail"]
+
+
+def test_email_is_stored_lowercase(email_prefix: str) -> None:
+    """Wielkość liter w adresie nic nie znaczy, więc jej nie przechowujemy (#59)."""
+    response = client.post(
+        "/api/submissions", json=payload(f"{email_prefix}Jan.Kowalski@Example.COM")
+    )
+
+    assert response.status_code == 201
+    assert response.json()["email"] == f"{email_prefix}jan.kowalski@example.com"
+
+
+def test_duplicate_email_differing_only_in_case_returns_409(email_prefix: str) -> None:
+    """Przed #59 "JAN@" przechodził obok "jan@" jako drugie zgłoszenie tej samej osoby.
+
+    Duże litery stoją przed "@" celowo: domenę `EmailStr` zmniejszał od zawsze,
+    więc test różniący się tylko domeną przechodziłby także przed poprawką.
+    """
+    first = client.post("/api/submissions", json=payload(f"{email_prefix}jan@example.com"))
+    assert first.status_code == 201
+
+    second = client.post("/api/submissions", json=payload(f"{email_prefix}JAN@example.com"))
+    assert second.status_code == 409
+    assert "e-mail" in second.json()["detail"]
+
+
+def test_email_with_polish_letters_is_lowercased(email_prefix: str) -> None:
+    """Małe litery z Pythona muszą przejść CHECK liczony `lower()` Postgresa.
+
+    Gdyby `lower()` Postgresa zmieniał cokolwiek w wyniku Pythona, baza
+    odrzuciłaby poprawny adres, a serwis zgłosiłby to jako duplikat. Polskie
+    litery to najbliższy nam przypadek spoza ASCII.
+    """
+    response = client.post(
+        "/api/submissions", json=payload(f"{email_prefix}Łukasz.Żółć@Uczelnia.pl")
+    )
+
+    assert response.status_code == 201
+    assert response.json()["email"] == f"{email_prefix}łukasz.żółć@uczelnia.pl"
+
+
+def test_email_growing_past_limit_when_lowercased_returns_422(email_prefix: str) -> None:
+    """Adres musi przejść walidację w postaci, w jakiej trafi do bazy.
+
+    "İ" (2 bajty) po `lower()` to "i" z kropką łączącą (3 bajty), więc adres
+    równy limitowi 254 bajtów wychodzi po zmniejszeniu liter poza niego.
+    Zapisany w tej postaci nie przeszedłby walidacji przy odczycie, a jeden
+    taki rekord wywracałby każde GET /api/submissions błędem 500.
+    """
+    domain = "@example.com"
+    filler = "a" * (254 - len(email_prefix) - len("İ".encode()) - len(domain))
+    email = f"{email_prefix}İ{filler}{domain}"
+    assert len(email.encode()) == 254
+
+    response = client.post("/api/submissions", json=payload(email))
+
+    assert response.status_code == 422
+    assert client.get("/api/submissions").status_code == 200
+
+
+def test_database_rejects_uppercase_email_bypassing_api(email_prefix: str) -> None:
+    """CHECK łapie zapis, który ominął `SubmissionCreate` - ręczny SQL,
+    skrypt z przykładowymi danymi albo błąd w przyszłym kodzie (#59)."""
+
+    async def insert_directly() -> None:
+        engine = create_async_engine(DATABASE_URL)
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text("INSERT INTO submissions (full_name, email, skills) VALUES (:n, :e, :s)"),
+                    {"n": "Ręczny Wpis", "e": f"{email_prefix}Reczny@example.com", "s": ["python"]},
+                )
+        finally:
+            await engine.dispose()
+
+    with pytest.raises(IntegrityError, match="email_lowercase"):
+        asyncio.run(insert_directly())
 
 
 @pytest.mark.parametrize(
