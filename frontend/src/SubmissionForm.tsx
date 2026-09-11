@@ -1,4 +1,5 @@
 import { useRef, useState, type SubmitEvent } from 'react'
+import { createSubmission, toErrorMessage } from './api'
 import {
   EXPERIENCE_LEVELS,
   EXPERIENCE_LEVEL_LABELS,
@@ -9,8 +10,6 @@ import {
   type ExperienceLevel,
   type PreferredRole,
 } from './submissionProfile'
-
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 type Status = 'idle' | 'submitting' | 'success' | 'error'
 
@@ -93,20 +92,6 @@ function validate(values: FormValues): FieldErrors {
   }
 
   return errors
-}
-
-function extractErrorMessage(body: unknown): string | null {
-  if (body && typeof body === 'object' && 'detail' in body) {
-    const detail = (body as { detail: unknown }).detail
-    if (typeof detail === 'string') return detail
-    if (Array.isArray(detail)) {
-      const messages = detail
-        .map((item) => (item && typeof item === 'object' && 'msg' in item ? String((item as { msg: unknown }).msg) : null))
-        .filter((msg): msg is string => Boolean(msg))
-      if (messages.length > 0) return messages.join(', ')
-    }
-  }
-  return null
 }
 
 type Props = {
@@ -192,39 +177,33 @@ function SubmissionForm({ onSuccess }: Props) {
     setStatus('submitting')
     setErrorMessage(null)
 
+    // W `try` stoi wyłącznie samo żądanie: błąd w kodzie po sukcesie (np.
+    // w `onSuccess`) nie może udawać nieudanego wysłania zgłoszenia.
     try {
-      const response = await fetch(`${API_URL}/api/submissions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          full_name: fullName,
-          email,
-          skills: skillList,
-          experience_level: experienceLevel,
-          preferred_role: preferredRole,
-          availability,
-        }),
+      await createSubmission({
+        full_name: fullName,
+        email,
+        skills: skillList,
+        // validate() wyżej przepuszcza tylko wybrane pola, więc pusty string
+        // już tu nie dotrze - rzutowanie tylko informuje o tym TypeScript.
+        experience_level: experienceLevel as ExperienceLevel,
+        preferred_role: preferredRole as PreferredRole,
+        availability,
       })
-
-      if (!response.ok) {
-        const body: unknown = await response.json().catch(() => null)
-        setStatus('error')
-        setErrorMessage(extractErrorMessage(body) ?? `Nie udało się wysłać zgłoszenia (${response.status}).`)
-        return
-      }
-
-      setStatus('success')
-      setFullName('')
-      setEmail('')
-      setSkills('')
-      setExperienceLevel('')
-      setPreferredRole('')
-      setAvailability(true)
-      onSuccess?.()
-    } catch {
+    } catch (error) {
       setStatus('error')
-      setErrorMessage(`Nie udało się połączyć z backendem (${API_URL}). Sprawdź, czy backend działa.`)
+      setErrorMessage(toErrorMessage(error))
+      return
     }
+
+    setStatus('success')
+    setFullName('')
+    setEmail('')
+    setSkills('')
+    setExperienceLevel('')
+    setPreferredRole('')
+    setAvailability(true)
+    onSuccess?.()
   }
 
   return (

@@ -1,26 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  EXPERIENCE_LEVEL_LABELS,
-  PREFERRED_ROLE_LABELS,
-  labelFor,
-  type ExperienceLevel,
-  type PreferredRole,
-} from './submissionProfile'
-
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
-
-export type Submission = {
-  id: number
-  full_name: string
-  email: string
-  skills: string[]
-  // null tylko dla zgłoszeń zapisanych przed dodaniem pól profilu - backend
-  // wymaga ich przy każdym nowym zgłoszeniu.
-  experience_level: ExperienceLevel | null
-  preferred_role: PreferredRole | null
-  availability: boolean
-  created_at: string
-}
+import { getSubmissions, toErrorMessage, type Submission } from './api'
+import { EXPERIENCE_LEVEL_LABELS, PREFERRED_ROLE_LABELS, labelFor } from './submissionProfile'
 
 type Status = 'loading' | 'ready' | 'error'
 
@@ -39,6 +19,7 @@ const COLUMNS = ['Imię i nazwisko', 'Email', 'Umiejętności', 'Poziom', 'Rola'
 function SubmissionList({ reloadToken = 0 }: Props) {
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [status, setStatus] = useState<Status>('loading')
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   // Numer ostatniego żądania. Gdy dwa fetch-e biegną równolegle (formularz
   // podbił reloadToken w chwili kliknięcia "Odśwież"), starsza odpowiedź
@@ -51,25 +32,23 @@ function SubmissionList({ reloadToken = 0 }: Props) {
   const load = useCallback(async () => {
     const seq = ++requestSeq.current
     setStatus('loading')
+
+    let data: Submission[]
     try {
-      const response = await fetch(`${API_URL}/api/submissions`)
-      if (!response.ok) throw new Error(`Backend odpowiedział ${response.status}`)
-      const data: unknown = await response.json()
-      if (seq !== requestSeq.current) return
-
-      // Bez tej walidacji rzutowanie "na wiarę" wywracało render
-      // (submissions.map na nie-tablicy) poza try/catch - patrz #66.
-      if (!Array.isArray(data)) throw new Error('Backend zwrócił nieoczekiwany kształt danych')
-
-      setSubmissions(data as Submission[])
-      setStatus('ready')
+      data = await getSubmissions()
     } catch (error) {
       if (seq !== requestSeq.current) return
-      // UI dostaje jeden ogólny komunikat, ale przy diagnozie w terenie
-      // warto widzieć oryginalną przyczynę (uwaga z review #82).
+      // UI dostaje komunikat gotowy dla człowieka, ale przy diagnozie w terenie
+      // warto widzieć pełny wyjątek z przyczyną (uwaga z review #82).
       console.warn('Nie udało się pobrać zgłoszeń:', error)
+      setErrorMessage(toErrorMessage(error))
       setStatus('error')
+      return
     }
+
+    if (seq !== requestSeq.current) return
+    setSubmissions(data)
+    setStatus('ready')
   }, [])
 
   // Pusta lista zależności w useCallback sprawia, że `load` jest zawsze tą samą
@@ -91,8 +70,8 @@ function SubmissionList({ reloadToken = 0 }: Props) {
       {status === 'loading' && <p>Ładowanie zgłoszeń...</p>}
 
       {status === 'error' && (
-        <p style={{ color: 'crimson' }}>
-          Nie udało się pobrać zgłoszeń ({API_URL}). Sprawdź, czy backend działa.
+        <p role="alert" style={{ color: 'crimson' }}>
+          {errorMessage}
         </p>
       )}
 
