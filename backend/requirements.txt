@@ -4,3 +4,4 @@ pydantic[email]>=2.13.5
 sqlalchemy[asyncio]>=2.0.52
 asyncpg>=0.31.0
 alembic>=1.19.2
+pwdlib[argon2]>=0.3.1

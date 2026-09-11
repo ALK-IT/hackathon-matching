@@ -77,6 +77,21 @@ pip install -r requirements-dev.txt
 uvicorn app.main:app --reload
 ```
 
+## Konto organizatora
+
+Konta organizatorów są podstawą logowania opisanego w [SPEC-005](.ai/specs/SPEC-005-2026-09-11-autoryzacja-organizatora.md). **Na razie istnieje sam model i skrypt** — logowanie powstaje w #120, a ochrona endpointów w #54 i #55, więc dziś założone konto jeszcze nigdzie się nie przydaje.
+
+Kont **nie da się założyć przez API** i nie będzie takiej możliwości — endpoint rejestracji byłby najkrótszą drogą do tego, żeby ktoś z zewnątrz zrobił sobie konto administratora. Jedyna droga prowadzi przez serwer:
+
+```bash
+cd backend
+python -m scripts.create_organizer
+```
+
+Skrypt zapyta o adres e-mail i hasło (hasło nie jest widoczne przy wpisywaniu i trzeba je powtórzyć). Wymagane minimum to **12 znaków**; hasła zawierające oczywiste fragmenty w rodzaju `admin` czy `hackathon` są odrzucane.
+
+Hasła nie podaje się argumentem ani zmienną środowiskową — argumenty widać w `ps` i zostają w historii powłoki.
+
 ## Testy
 
 ```bash

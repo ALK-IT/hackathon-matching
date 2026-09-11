@@ -166,3 +166,45 @@ class Team(Base):
     )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Organizer(Base):
+    """Konto organizatora - jedyna tożsamość, jaką zna to API (SPEC-005).
+
+    Uczestnicy kont nie mają i mieć nie będą: zgłoszenie wysyła się bez
+    logowania, a `Submission` nie jest z tym modelem w żaden sposób powiązane.
+    To celowe zawężenie zakresu z #68 - tu nie ma rejestracji uczestników,
+    jest formularz.
+
+    Kont nie da się założyć przez API. Nie ma na to endpointu i nie będzie
+    w tym zakresie: jedyną drogą jest `scripts/create_organizer.py`, czyli
+    ktoś z dostępem do serwera. Endpoint rejestracji organizatora byłby
+    najkrótszą drogą do tego, żeby uczestnik hackathonu założył sobie konto
+    administratora.
+    """
+
+    __tablename__ = "organizers"
+
+    __table_args__ = (
+        # Ten sam CHECK co przy zgłoszeniach (#59). Walidacja w Pythonie
+        # sprowadza adres do małych liter, ale baza nie może na to liczyć:
+        # skrypt zakładający konto i ewentualna ręczna poprawka w SQL omijają
+        # warstwę aplikacji, a wtedy "Jan@alk.pl" i "jan@alk.pl" byłyby dwoma
+        # różnymi kontami mimo ograniczenia unikalności.
+        CheckConstraint("email = lower(email)", name="email_lowercase"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    # Login organizatora. Adres, a nie dowolna nazwa użytkownika, bo przy
+    # kilku osobach w zespole "kto to jest admin2" jest pytaniem bez odpowiedzi,
+    # a e-mail wskazuje konkretnego człowieka.
+    email: Mapped[str] = mapped_column(String(320), unique=True)
+
+    # Wyłącznie hash, nigdy hasło. Długość z zapasem: argon2id produkuje dziś
+    # ok. 100 znaków, ale zmiana parametrów albo algorytmu (pwdlib potrafi
+    # przehashować przy logowaniu) potrafi ten wynik wydłużyć, a kolumna za
+    # ciasna ucięłaby hash i zablokowała logowanie właścicielowi konta.
+    password_hash: Mapped[str] = mapped_column(String(512))
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
