@@ -34,9 +34,11 @@ async def submit(session: AsyncSession, payload: SubmissionCreate) -> Submission
     równoległe żądania z tym samym adresem mogą oba je przejść. Ograniczenie
     unikalności w bazie jest jedynym miejscem, które nie da się oszukać.
 
-    Tabela `submissions` ma dokładnie jedno ograniczenie unikalności (email),
-    więc IntegrityError może tu oznaczać wyłącznie duplikat adresu. Gdy dojdą
-    kolejne ograniczenia, trzeba będzie rozróżniać je po nazwie.
+    Z ograniczeń tabeli `submissions` przy tym zapisie może zadziałać tylko
+    unikalność e-maila: pozostałe (CHECK na profil i na małe litery w adresie)
+    pilnują wartości, które `SubmissionCreate` już zwalidował albo
+    znormalizował. Dlatego IntegrityError traktujemy jako duplikat adresu;
+    rozróżnianie ograniczeń po nazwie to #100.
     """
     if await repository.count_submissions(session) >= MAX_TOTAL_SUBMISSIONS:
         raise SubmissionLimitReachedError

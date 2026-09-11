@@ -55,6 +55,28 @@ class SubmissionCreate(BaseModel):
         """
         return list(dict.fromkeys(skill.lower() for skill in skills))
 
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, email: object) -> object:
+        """Sprowadza cały adres do małych liter (#59).
+
+        `EmailStr` sam zmniejsza tylko domenę (część po "@"), bo standard
+        poczty formalnie pozwala rozróżniać wielkość liter przed "@". Żaden
+        popularny dostawca z tego nie korzysta, a bez tej normalizacji
+        "Jan@example.com" i "jan@example.com" przechodziły jako dwa zgłoszenia
+        jednej osoby - i dwa miejsca w matchowaniu.
+
+        `mode="before"`: zmniejszamy PRZED walidacją `EmailStr`, żeby limit
+        długości i pozostałe reguły sprawdzały dokładnie to, co trafi do bazy.
+        `lower()` potrafi wydłużyć adres ("İ" to po nim dwa znaki), a rekord
+        zapisany ponad limitem nie przeszedłby walidacji przy odczycie
+        (`SubmissionOut`) i wywracałby całą listę zgłoszeń.
+
+        `lower()`, nie `casefold()`: casefold zamienia np. "ß" na "ss", czyli
+        zmienia sam adres, a nie tylko wielkość liter.
+        """
+        return email.lower() if isinstance(email, str) else email
+
 
 class SubmissionOut(BaseModel):
     """Zgłoszenie zwracane przez API, razem z polami nadanymi przez bazę."""

@@ -23,11 +23,24 @@ class TooManyParticipantsError(Exception):
     """Zgłoszeń jest więcej, niż matchowanie sensownie obsłuży (#57)."""
 
 
-# Limit wejścia do algorytmu. CPU pilnuje budżet pracy w _swap_repair (patrz
-# balanced.py), więc ta stała chroni tylko rzeczy wtórne: odpowiedź JSON
-# z pełnymi składami przy 2000 osób to już ~0,5 MB. Żaden realny hackathon
-# w to nie uderzy - limit istnieje na wypadek masowych fałszywych zgłoszeń,
-# które przecisnęły się mimo limitu w POST /api/submissions.
+# Limit PULI DO MATCHOWANIA - celowo niższy niż limit rejestracji
+# (`MAX_TOTAL_SUBMISSIONS` = 3000) i celowo nie wyprowadzony z niego.
+#
+# To dwie różne populacje w modelu docelowym: uczestnik będzie mógł wybrać
+# zespół samodzielnie, więc do algorytmu trafi tylko ta część zgłoszonych,
+# która o dopasowanie prosi. 2999 zgłoszeń, z czego 1000 do zmatchowania, to
+# stan normalny, a nie sprzeczność między limitami.
+#
+# UWAGA na dziś: wyboru zespołu jeszcze nie ma, `list_submissions` zwraca
+# wszystkie wiersze, więc do czasu jego wprowadzenia zapadka mierzy komplet
+# zgłoszeń i baza powyżej 2000 rekordów nie zmatchuje się wcale. Przy skali
+# hackatonu ALK to stan nieosiągalny; gdy pojawi się pula "do matchowania",
+# sprawdzenie ma liczyć właśnie ją, nie `len(submissions)`.
+#
+# Zapadka nie chroni CPU - tym zajmuje się budżet pracy w _swap_repair (patrz
+# balanced.py), przy 2000 osób przebieg trwa ~1,7 s. Chodzi o rzeczy wtórne,
+# przede wszystkim rozmiar odpowiedzi: JSON z pełnymi składami to przy tej
+# wartości ~0,5 MB.
 MAX_MATCHED_PARTICIPANTS = 2000
 
 
@@ -69,6 +82,10 @@ async def run_matching(
     Rzuca `NoSubmissionsError`, gdy nie ma żadnego zgłoszenia - pusta lista
     zespołów byłaby poprawną odpowiedzią na bezsensowne pytanie i wyglądała
     dla klienta jak awaria algorytmu, a nie jak pusta baza.
+
+    Rzuca `MatchingInProgressError`, gdy zamek trzyma inny przebieg (#56),
+    i `TooManyParticipantsError`, gdy zgłoszeń jest więcej niż
+    `MAX_MATCHED_PARTICIPANTS` (#57) - router tłumaczy oba na 409.
 
     Rzuca `ValueError` przy `team_size` mniejszym niż 1 (walidacja w
     `team_sizes`); router odsiewa takie wartości wcześniej, ale funkcja jest

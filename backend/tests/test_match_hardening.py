@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from dataclasses import dataclass, field
 from uuid import uuid4
 
 import httpx
@@ -15,7 +16,9 @@ import app.matching.balanced as balanced_module
 import app.services.matching as matching_service
 import app.services.submissions as submissions_service
 from app.db import DATABASE_URL
+from app.enums import ExperienceLevel, PreferredRole
 from app.main import app
+from app.matching.baseline import team_sizes
 from app.repositories.teams import MATCHING_LOCK_KEY
 
 client = TestClient(app)
@@ -30,6 +33,37 @@ def _payload(prefix: str, index: int) -> dict:
         "preferred_role": "backend",
         "availability": True,
     }
+
+
+@dataclass
+class Person:
+    """Uczestnik dla testów samego algorytmu - bez bazy i bez HTTP.
+
+    Algorytm czyta profil przez protokół `Participant`, więc naprawę wymianami
+    da się sprawdzić na zwykłym dataclassie, bez zapisanych zgłoszeń.
+    """
+
+    name: str
+    experience_level: ExperienceLevel | None
+    preferred_role: PreferredRole | None
+    skills: list[str] = field(default_factory=list)
+
+
+def _people(count: int) -> list[Person]:
+    """Deterministyczna próbka profili - ten sam wsad przy każdym wywołaniu.
+
+    Determinizm jest tu warunkiem sensu testów: porównujemy wynik tego samego
+    wsadu przy dwóch budżetach pracy, więc losowość zamieniłaby asercję
+    w rzut monetą.
+    """
+    levels = [
+        ExperienceLevel.BEGINNER,
+        ExperienceLevel.INTERMEDIATE,
+        ExperienceLevel.ADVANCED,
+        None,
+    ]
+    roles = list(PreferredRole) + [None]
+    return [Person(f"P{i}", levels[i % 4], roles[i % 8], ["python"]) for i in range(count)]
 
 
 async def _delete_by_prefix(prefix: str) -> None:
@@ -189,28 +223,9 @@ def test_participant_cap_on_matching_returns_409(
 def test_tiny_repair_budget_still_yields_valid_teams(monkeypatch: pytest.MonkeyPatch) -> None:
     """#57 warstwa 3: wyczerpany budżet kończy naprawę, ale wynik pozostaje
     poprawnym podziałem - gwarancje pochodzą z faz 1-3, nie z naprawy."""
-    from dataclasses import dataclass, field
-
-    from app.enums import ExperienceLevel, PreferredRole
-    from app.matching.baseline import team_sizes
-
-    @dataclass
-    class Person:
-        name: str
-        experience_level: ExperienceLevel | None
-        preferred_role: PreferredRole | None
-        skills: list[str] = field(default_factory=list)
-
     monkeypatch.setattr(balanced_module, "_MAX_REPAIR_WORK", 1)
 
-    levels = [
-        ExperienceLevel.BEGINNER,
-        ExperienceLevel.INTERMEDIATE,
-        ExperienceLevel.ADVANCED,
-        None,
-    ]
-    roles = list(PreferredRole) + [None]
-    people = [Person(f"P{i}", levels[i % 4], roles[i % 8], ["python"]) for i in range(23)]
+    people = _people(23)
 
     teams = balanced_module.balanced_teams(people, 4)
 
@@ -223,3 +238,27 @@ def test_tiny_repair_budget_still_yields_valid_teams(monkeypatch: pytest.MonkeyP
     assert non_beginners >= len(teams)
     for team in teams:
         assert any(balanced_module.experience_points(p) >= 2 for p in team)
+
+
+def test_repair_budget_actually_stops_the_repair(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#57 warstwa 3: budżet naprawdę ucina naprawę, a nie tylko istnieje.
+
+    Test powyżej pilnuje, żeby wynik po wyczerpaniu budżetu pozostał poprawny -
+    ale przechodzi również wtedy, gdy limitu nie ma w kodzie w ogóle, bo pełna
+    naprawa też daje poprawny podział. Bez tej asercji skasowanie warunku
+    w `_swap_repair` przeszłoby CI bez ani jednego czerwonego testu, a to
+    właśnie ten warunek jest obroną przed DoS z #57.
+
+    Mechanizm sprawdzamy porównaniem: ten sam wsad, dwa budżety. Przy budżecie
+    wyczerpanym naprawa kończy się przed czasem, więc wynik musi być ŚCIŚLE
+    gorszy (`objective`: niższy = lepszy). Wsad dobrany tak, żeby fazy 1-3
+    zostawiały naprawie realny zysk do wzięcia - inaczej oba przebiegi
+    dawałyby to samo i test nie mierzyłby niczego.
+    """
+    monkeypatch.setattr(balanced_module, "_MAX_REPAIR_WORK", 10**12)
+    full = balanced_module.objective(balanced_module.balanced_teams(_people(30), 4))
+
+    monkeypatch.setattr(balanced_module, "_MAX_REPAIR_WORK", 1)
+    truncated = balanced_module.objective(balanced_module.balanced_teams(_people(30), 4))
+
+    assert truncated > full
