@@ -6,10 +6,13 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.db import DATABASE_URL
 from app.main import app
+from app.schemas import SubmissionCreate
+from app.services import submissions as service
 
 client = TestClient(app)
 
@@ -304,3 +307,83 @@ def test_list_submissions_returns_created_submission(email_prefix: str) -> None:
     assert matching[0]["experience_level"] == "advanced"
     assert matching[0]["preferred_role"] == "design"
     assert matching[0]["availability"] is False
+
+
+# --- rozroznianie ograniczen po nazwie (#100) ---
+
+
+def test_stala_z_nazwa_ograniczenia_zgadza_sie_z_baza() -> None:
+    """Nazwę ograniczenia unikalności nadaje Postgres, a nie nasz model.
+
+    W `models.py` stoi samo `unique=True`, więc nazwa bierze się z konwencji
+    sterownika. Ten test jest jedynym miejscem, które ją przypina: gdyby
+    kiedykolwiek się zmieniła, `submit` przestałby rozpoznawać duplikat
+    e-maila i zamiast czytelnego 409 użytkownik dostawałby 500.
+    """
+
+    async def nazwy_ograniczen() -> set[str]:
+        engine = create_async_engine(DATABASE_URL)
+        try:
+            async with engine.connect() as conn:
+                result = await conn.execute(
+                    text(
+                        "SELECT conname FROM pg_constraint "
+                        "WHERE conrelid = 'submissions'::regclass AND contype = 'u'"
+                    )
+                )
+                return {row[0] for row in result}
+        finally:
+            await engine.dispose()
+
+    assert service.EMAIL_UNIQUE_CONSTRAINT in asyncio.run(nazwy_ograniczen())
+
+
+def test_naruszenie_innego_ograniczenia_nie_udaje_duplikatu_emaila(email_prefix: str) -> None:
+    """Sedno #100: tylko unikalność e-maila daje `DuplicateEmailError`.
+
+    Naruszenie wymuszamy `model_construct`, które omija walidację pydantica -
+    inaczej schemat sprowadziłby adres do małych liter i CHECK `email_lowercase`
+    nigdy by nie zadziałał. To sztuczny sposób na wywołanie sytuacji, która
+    w produkcji powstanie naturalnie, gdy do tabeli dojdzie kolejne ograniczenie.
+
+    Asercja jest jedna, bo wystarcza: `DuplicateEmailError` nie dziedziczy po
+    `IntegrityError`, więc gdyby kod nadal mapował każde naruszenie na duplikat,
+    `pytest.raises(IntegrityError)` by nie przeszło. Przed tą zmianą tak
+    właśnie by się stało - użytkownik dostawał 409 "e-mail już istnieje" przy
+    błędzie nie mającym z duplikatem nic wspólnego.
+
+    Własny silnik z `NullPool`, a nie `SessionLocal` aplikacji: sesja z puli
+    zostałaby przypięta do pętli zdarzeń tego testu i wywróciła kolejne testy
+    sięgające po tę samą pulę (powód opisany w `conftest.py`).
+    """
+    niepoprawny = SubmissionCreate.model_construct(
+        full_name="Jan Kowalski",
+        email=f"{email_prefix}WIELKIE@example.com",
+        skills=["python"],
+        experience_level="intermediate",
+        preferred_role="backend",
+        availability=True,
+    )
+
+    async def scenario() -> None:
+        engine = create_async_engine(DATABASE_URL, poolclass=NullPool)
+        try:
+            async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+                await service.submit(session, niepoprawny)
+        finally:
+            await engine.dispose()
+
+    with pytest.raises(IntegrityError):
+        asyncio.run(scenario())
+
+
+def test_nieznany_ksztalt_wyjatku_nie_wywraca_obslugi_bledu() -> None:
+    """Ścieżka wyciągania nazwy zależy od wnętrza sterownika.
+
+    Gdyby kolejna wersja asyncpg albo SQLAlchemy ją przebudowała, obsługa
+    błędu ma zwrócić `None` i potraktować to jak nieznane ograniczenie -
+    a nie wywalić się na `AttributeError` w trakcie obsługiwania błędu.
+    """
+    bez_przyczyny = IntegrityError("INSERT ...", None, Exception("cokolwiek"))
+
+    assert service._violated_constraint(bez_przyczyny) is None

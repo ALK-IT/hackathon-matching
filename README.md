@@ -44,7 +44,7 @@ CodeQL, gitleaks (skan sekretów) i audyt zależności (`npm audit` / `pip-audit
 
 - Node.js 20+
 - Python 3.12+
-- Docker + Docker Compose (opcjonalnie, do uruchomienia całości jedną komendą)
+- Docker + Docker Compose — do uruchomienia całości jedną komendą, a przy pracy lokalnej do samej bazy (chyba że masz własnego Postgresa 16)
 
 ## Uruchomienie w Dockerze
 
@@ -69,13 +69,75 @@ npm ci
 npm run dev
 ```
 
+Frontend działa na http://localhost:5173 i domyślnie odpytuje backend pod `http://localhost:8000`. Inny adres ustawia się zmienną `VITE_API_URL` (czytana przy budowaniu, nie w trakcie działania).
+
 ### Backend
 
+Backend potrzebuje Postgresa — bez niego wstanie, ale każde żądanie dotykające bazy skończy się błędem. Najprościej podnieść samą bazę z compose i zostawić resztę lokalnie:
+
 ```bash
+# 1. baza (tylko ona, bez backendu i frontendu)
+docker compose up -d postgres
+
+# 2. zależności
 cd backend
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
+
+# 3. schemat bazy — bez tego tabele nie istnieją
+alembic upgrade head
+
+# 4. serwer
 uvicorn app.main:app --reload
 ```
+
+Backend słucha na http://localhost:8000, interaktywna dokumentacja API: **http://localhost:8000/docs**.
+
+`DATABASE_URL` nie trzeba ustawiać — domyślna wartość wskazuje dokładnie na bazę z `docker-compose.yml`. Pełna lista zmiennych środowiskowych jest w [sekcji Deploy](#deploy).
+
+## Przykłady API
+
+Sprawdzone na lokalnie uruchomionym backendzie — odpowiedzi poniżej są prawdziwe, nie poglądowe.
+
+**Zgłoszenie uczestnika:**
+
+```bash
+curl -X POST http://localhost:8000/api/submissions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "full_name": "Anna Nowak",
+    "email": "anna@example.com",
+    "skills": ["python", "react"],
+    "experience_level": "intermediate",
+    "preferred_role": "backend",
+    "availability": true
+  }'
+```
+
+```json
+{"id":1,"full_name":"Anna Nowak","email":"anna@example.com","skills":["python","react"],
+ "experience_level":"intermediate","preferred_role":"backend","availability":true,
+ "created_at":"2026-09-11T22:26:08.997021Z"}
+```
+
+**Błędne dane** dają `422` z komunikatami po polsku, gotowymi do pokazania w formularzu:
+
+```json
+{"detail":[{"loc":["body","full_name"],"msg":"Podaj imię i nazwisko.","type":"string_too_short"},
+           {"loc":["body","email"],"msg":"Podaj poprawny adres e-mail, np. jan.kowalski@example.com.","type":"value_error"}]}
+```
+
+**Lista zgłoszeń** i **uruchomienie matchowania:**
+
+```bash
+curl http://localhost:8000/api/submissions
+
+curl -X POST 'http://localhost:8000/api/match?team_size=3'
+```
+
+`POST /api/match` zwraca `201` z gotowymi zespołami i ich pełnym składem. Uwaga: **każde uruchomienie kasuje poprzedni podział** i liczy nowy — to nie jest operacja bezpieczna do powtórzenia w dowolnym momencie. Na pustej bazie odpowiada `409`.
+
+Dopuszczalne wartości `experience_level` (`beginner`, `intermediate`, `advanced`) i `preferred_role` (`frontend`, `backend`, `fullstack`, `design`, `data`, `pm`, `other`) opisuje `/docs`.
 
 ## Testy
 
