@@ -1,8 +1,6 @@
 import { useState } from 'react'
+import { runMatching, toErrorMessage, type Team } from './api'
 import { EXPERIENCE_LEVEL_LABELS, PREFERRED_ROLE_LABELS, labelFor } from './submissionProfile'
-import type { Submission } from './SubmissionList'
-
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 // Maksymalny rozmiar zespołu - zgodnie z issue #27 bez pola wyboru. Uwaga:
 // backend traktuje team_size jako GÓRNY LIMIT, nie docelowy rozmiar (przy
@@ -11,36 +9,7 @@ const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 // zamienić stałą na stan komponentu.
 const TEAM_SIZE = 3
 
-export type Team = {
-  id: number
-  members: Submission[]
-  created_at: string
-}
-
 type Status = 'idle' | 'loading' | 'ready' | 'error'
-
-/** Wyciąga komunikat z odpowiedzi backendu.
- *
- * Backend zwraca `detail` jako tekst (409 - brak zgłoszeń) albo listę błędów
- * walidacji (422). Przy rozmiarze zespołu na sztywno 422 nie powinno się
- * zdarzyć, ale odpowiedź obsługujemy w całości, żeby zmiana stałej na pole
- * wyboru nie zaskoczyła nikogo surowym JSON-em na ekranie.
- */
-function extractErrorMessage(body: unknown): string | null {
-  if (body && typeof body === 'object' && 'detail' in body) {
-    const detail = (body as { detail: unknown }).detail
-    if (typeof detail === 'string') return detail
-    if (Array.isArray(detail)) {
-      const messages = detail
-        .map((item) =>
-          item && typeof item === 'object' && 'msg' in item ? String((item as { msg: unknown }).msg) : null,
-        )
-        .filter((msg): msg is string => Boolean(msg))
-      if (messages.length > 0) return messages.join(', ')
-    }
-  }
-  return null
-}
 
 function MatchResults() {
   const [teams, setTeams] = useState<Team[]>([])
@@ -50,7 +19,7 @@ function MatchResults() {
   // Zespoły pobieramy wyłącznie po kliknięciu, nie przy wejściu na stronę:
   // matchowanie ZMIENIA stan (kasuje poprzedni podział), więc nie może
   // odpalać się samo. To ta sama zasada, dla której backend używa POST.
-  const runMatching = async () => {
+  const handleRunMatching = async () => {
     // POST /api/match kasuje istniejący podział i liczy nowy - dopóki
     // endpoint jest bez autoryzacji (#54), potwierdzenie chroni przynajmniej
     // przed odruchowym nadpisaniem gotowych zespołów (uwaga z review).
@@ -60,45 +29,24 @@ function MatchResults() {
     setStatus('loading')
     setErrorMessage(null)
 
+    let result: Team[]
     try {
-      const response = await fetch(`${API_URL}/api/match?team_size=${TEAM_SIZE}`, {
-        method: 'POST',
-      })
-
-      if (!response.ok) {
-        const body: unknown = await response.json().catch(() => null)
-        setStatus('error')
-        setErrorMessage(
-          extractErrorMessage(body) ?? `Nie udało się uruchomić matchowania (${response.status}).`,
-        )
-        return
-      }
-
-      const data: unknown = await response.json()
-
-      // Ten sam problem, który #66 załatał w liście zgłoszeń: rzutowanie
-      // na wiarę wywraca render (teams.map na nie-tablicy) poza try/catch.
-      // Własny komunikat zamiast rzutu do catch - "nie udało się połączyć"
-      // byłoby tu nieprawdą, połączenie przecież zadziałało.
-      if (!Array.isArray(data)) {
-        setStatus('error')
-        setErrorMessage('Backend zwrócił nieoczekiwaną odpowiedź. Spróbuj ponownie.')
-        return
-      }
-
-      setTeams(data as Team[])
-      setStatus('ready')
-    } catch {
+      result = await runMatching(TEAM_SIZE)
+    } catch (error) {
       setStatus('error')
-      setErrorMessage(`Nie udało się połączyć z backendem (${API_URL}). Sprawdź, czy backend działa.`)
+      setErrorMessage(toErrorMessage(error))
+      return
     }
+
+    setTeams(result)
+    setStatus('ready')
   }
 
   return (
     <section style={{ maxWidth: '40rem', margin: '3rem auto 0', textAlign: 'left' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '1rem' }}>
         <h2 style={{ fontSize: '1.1rem' }}>Zespoły</h2>
-        <button type="button" onClick={() => void runMatching()} disabled={status === 'loading'}>
+        <button type="button" onClick={() => void handleRunMatching()} disabled={status === 'loading'}>
           {status === 'loading' ? 'Matchowanie...' : 'Uruchom matchowanie'}
         </button>
       </div>
