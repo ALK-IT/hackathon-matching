@@ -21,5 +21,6 @@ Wzorowane na podejściu z [open-mercato](https://github.com/open-mercato/open-me
 | SPEC-002 | Endpoint przyjmujący zgłoszenia uczestników | Proponowany | [SPEC-002-2026-08-18-post-submissions.md](SPEC-002-2026-08-18-post-submissions.md) |
 | SPEC-003 | Algorytm matchowania — balans doświadczenia, ról i umiejętności | Proponowany | [SPEC-003-2026-08-24-algorytm-matchowania.md](SPEC-003-2026-08-24-algorytm-matchowania.md) |
 | SPEC-004 | Endpoint uruchamiający matchowanie i zapis zespołów | Proponowany | [SPEC-004-2026-08-26-endpoint-matchowania.md](SPEC-004-2026-08-26-endpoint-matchowania.md) |
+| SPEC-005 | Autoryzacja organizatora (logowanie, ochrona endpointów, paginacja listy) | Zaakceptowany | [SPEC-005-2026-09-11-autoryzacja-organizatora.md](SPEC-005-2026-09-11-autoryzacja-organizatora.md) |
 
 Zasady utrzymania tego indeksu i współpracy z agentami AI: [AGENTS.md](AGENTS.md).
