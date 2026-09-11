@@ -36,3 +36,10 @@ def test_profile_columns_have_database_level_check() -> None:
     constraints = {constraint.name for constraint in Submission.__table__.constraints}
 
     assert {"experience_level", "preferred_role"} <= constraints
+
+
+def test_email_column_has_lowercase_check() -> None:
+    """Małe litery w e-mailu pilnuje też baza, nie tylko schemat (#59)."""
+    constraints = {constraint.name for constraint in Submission.__table__.constraints}
+
+    assert "email_lowercase" in constraints
