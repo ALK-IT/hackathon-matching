@@ -62,8 +62,8 @@ limit 4 → trzy zespoły po 3 osoby o sumach punktów 7 / 6 / 6.
 Jawna funkcja oceny (niższa = lepsza): `100000 × rozpiętość sum punktów
 + 1000 × Σ rozpiętości ról + 1 × powtórzenia umiejętności w zespołach`.
 Wagi czynią hierarchię kryteriów w praktyce ścisłą przy skali hackathonu.
-Krok 4 optymalizuje dokładnie tę funkcję, a #26 może jej użyć jako punktu
-wyjścia do porównywania algorytmów - mierzymy wtedy to, co optymalizujemy.
+Krok 4 optymalizuje dokładnie tę funkcję. Metryka z #26 (sekcja niżej)
+pokazuje ją obok nazwanych miar — trzy z nich to jej rozpisane składniki.
 
 Zmierzone na siatce testowej (152 układy, 1064 pary rola × układ), po kroku 4:
 rozpiętość sum punktów średnio 0,53 i nigdy więcej niż 1; rozrzut ról ≤ 1
@@ -76,8 +76,12 @@ w `random_teams`; mediana czasu 5 ms.
   i nie przekracza limitu, rozmiary różnią się najwyżej o jedną osobę;
 - jeśli osób o poziomie wyższym niż początkujący jest co najmniej tyle, ile
   zespołów, **żaden zespół nie składa się z samych początkujących**;
-- rozrzut sum punktów jest nie większy niż w `random_teams` na tych samych
-  danych (test porównawczy na 50 losowych zestawach);
+- rozrzut sum punktów jest w praktyce mniejszy niż w `random_teams` na tych
+  samych danych (test porównawczy na 50 losowych zestawach). To obserwacja,
+  nie gwarancja: naprawa wymianami utyka, gdy poprawa wymaga dwóch zamian
+  naraz — przy sumach [6, 6, 4, 4] jedna zamiana daje co najwyżej
+  [5, 6, 5, 4], czyli ten sam rozrzut. W porównaniu z #26 losowanie wygrywa
+  w ten sposób w 1 zestawie na 3000;
 - bez `rng` wynik jest deterministyczny; `rng` miesza tylko kolejność wejścia,
   czyli sposób rozstrzygania remisów — gwarancje wyżej obowiązują tak samo
   (naprawa wymianami też jest deterministyczna: stała kolejność skanu);
@@ -93,4 +97,79 @@ pokrycia frontendu i backendu, nie zna twardych ograniczeń typu "te osoby chcą
 być razem". Wyrównanie jest heurystyczne (zachłanny plan + lokalna naprawa wymianami
 par), a nie optymalne — dokładny podział to problem NP-trudny, a naprawa nie
 wykona rotacji trzech osób naraz. Przy skali hackatonu różnica jest pomijalna.
-Metryka do porównywania algorytmów powstanie w #26.
+Jak mierzymy jakość podziału i porównujemy warianty — sekcja niżej (#26).
+
+## `metrics.score_teams` — metryka jakości (issue #26)
+
+Ocenia gotowy podział dowolnego algorytmu zestawem nazwanych miar. W każdej
+**niżej = lepiej** — poza f, której kierunek czeka na #58:
+
+| Miara | Co mówi |
+|---|---|
+| a) `experience_spread` | różnica sum punktów za doświadczenie między zespołami |
+| b1) `teams_without_backend_pct`, b2) `teams_without_frontend_pct` | % zespołów bez nikogo z tą rolą; zależy też od danych — gdy backendowców jest mniej niż zespołów, część musi zostać bez nich |
+| b3) `role_spread` | średnio po rolach: o ile różni się liczba osób z daną rolą między zespołami |
+| c) `duplicate_skills_per_team` | powtórzone umiejętności na zespół |
+| d) `size_spread` | różnica wielkości zespołów — miara **kontrolna**: oba algorytmy dzielą według `team_sizes`, więc wychodzi zawsze tak samo |
+| e) `teams_without_experienced_pct` | % zespołów bez nikogo co najmniej średniozaawansowanego |
+| f) `availability_spread` | różnica liczby osób bez pełnej dostępności (`availability=False`) między zespołami; **kierunek zależy od #58** |
+| `objective` | liczba zbiorcza: funkcja celu `balanced_teams` |
+
+Nie wszystkie miary są niezależne od algorytmu, i trzeba to wiedzieć, czytając
+porównanie:
+
+- **a, b3, c** to rozpisane na jednostki składniki `objective` —
+  `balanced_teams` optymalizuje je wprost. Przewaga w nich pokazuje, że
+  algorytm robi to, co ma robić, a nie że jest lepszy według zewnętrznej miary;
+- **b1, b2, e** nie wchodzą do `objective` (e pilnuje gwarancja z #24);
+- **f** jest dziś od algorytmu całkiem niezależna, **d** jest kontrolna.
+
+`objective` to ocena algorytmu według jego **własnego** celu. `balanced_teams`
+optymalizuje ją heurystycznie, więc prawie zawsze w niej wygrywa (przy 3000
+zestawach dwie przegrane) — i ta wygrana sama niczego nie dowodzi.
+
+### Porównanie algorytmów
+
+```
+python -m app.matching.compare                  # z katalogu backend/
+python -m app.matching.compare --datasets 50 --seed 7
+```
+
+Oba algorytmy dostają każdy zestaw w identycznej postaci; skrypt podaje
+średnie i bilans liczony zestaw po zestawie. Wynik dla ustawień domyślnych
+(300 syntetycznych zestawów po 8–40 osób, limit 3–5, ziarno 2026):
+
+```
+miara (nizej = lepiej)                         random     balanced   balanced lepszy / remis / gorszy
+a) rozrzut doswiadczenia (pkt)                   4.14         1.07     279 /    21 /     0
+b1) % zespolow bez backendowca                  57.26        49.67     109 /   190 /     1
+b2) % zespolow bez frontendowca                 55.32        46.77     123 /   175 /     2
+b3) rozrzut rol (srednio na role)                1.40         0.88     281 /    19 /     0
+c) powtorzone umiejetnosci / zespol              1.84         0.85     286 /     7 /     7
+d) rozrzut wielkosci (kontrolna)                 0.68         0.68       0 /   300 /     0
+e) % zespolow bez doswiadczonego                 2.49         0.11      51 /   249 /     0
+f) rozrzut niepelnej dostepnosci (#58)           1.70         1.63      65 /   189 /    46
+objective (wlasny cel algorytmu)            423791.63    113187.84     300 /     0 /     0
+```
+
+Jak to czytać:
+
+- **a, b3, c** — wyraźna przewaga, prawie nigdy gorzej. To składniki
+  `objective`, więc to przede wszystkim dowód, że algorytm robi, co ma robić;
+- **b1, b2, e** — przewaga w miarach, których `objective` nie liczy. Remis
+  w b1/b2 tylko czasem wymusza sam rozkład danych (gdy z daną rolą jest
+  najwyżej jedna osoba — 59 ze 190 remisów w b1); częściej losowanie po prostu
+  trafia w najlepsze możliwe pokrycie, co przy kilku zespołach jest łatwe.
+  Zespół bez doświadczonej osoby powstaje u `balanced_teams` wyłącznie wtedy,
+  gdy doświadczonych jest mniej niż zespołów (sprawdzone na tych samych danych);
+- **d** — zawsze remis, zgodnie z założeniem miary kontrolnej;
+- **f** — brak systematycznej różnicy w żadną stronę, bo algorytm nie patrzy
+  na dostępność (#58). Kierunek tej miary nie jest jeszcze przesądzony: treść
+  #58 mówi o zrównoważeniu takich osób, a komentarz przy kolumnie
+  `availability` w `models.py` — o ich grupowaniu; przy grupowaniu potrzebna
+  będzie inna miara, nie sama zmiana znaku;
+- **objective** — wygrana prawie zawsze, bo to cel algorytmu; sama w sobie nie
+  jest argumentem.
+
+Test akceptacyjny w `tests/test_matching_metrics.py` sprawdza to samo na 40
+zestawach; po podmianie `balanced_teams` na losowanie pada.
