@@ -111,7 +111,30 @@ describe('SubmissionList', () => {
 
     render(<SubmissionList />)
 
-    expect(await screen.findByText(/nie udało się pobrać zgłoszeń/i)).toBeInTheDocument()
+    expect(await screen.findByText(/nie udało się połączyć z backendem/i)).toBeInTheDocument()
+  })
+
+  it('pokazuje komunikat, który przysłał backend, zamiast ogólnika (#94)', async () => {
+    // Przed #94 lista ignorowała `detail` i każdą porażkę opisywała jako
+    // "sprawdź, czy backend działa" - także wtedy, gdy backend działał i powiedział
+    // wprost, co jest nie tak (np. brak autoryzacji po #54/#55).
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mockFetch({ detail: 'Brak uprawnień do listy zgłoszeń.' }, false)
+
+    render(<SubmissionList />)
+
+    // Przez rolę, nie przez sam tekst: komunikat ma być ogłoszony czytnikom
+    // ekranu, tak jak w formularzu i w wynikach matchowania.
+    expect(await screen.findByRole('alert')).toHaveTextContent('Brak uprawnień do listy zgłoszeń.')
+  })
+
+  it('odmowa bez czytelnego komunikatu podaje kod statusu', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mockFetch({}, false)
+
+    render(<SubmissionList />)
+
+    expect(await screen.findByText('Nie udało się pobrać zgłoszeń (500).')).toBeInTheDocument()
   })
 
   it('przycisk Odśwież pobiera dane ponownie', async () => {
@@ -187,6 +210,6 @@ describe('SubmissionList', () => {
 
     render(<SubmissionList />)
 
-    expect(await screen.findByText(/nie udało się pobrać zgłoszeń/i)).toBeInTheDocument()
+    expect(await screen.findByText(/nieoczekiwaną odpowiedź/i)).toBeInTheDocument()
   })
 })
