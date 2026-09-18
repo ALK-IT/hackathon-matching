@@ -17,6 +17,11 @@ from app.db import DATABASE_URL
 from app.enums import ExperienceLevel, PreferredRole
 from scripts import seed
 
+# Wzorzec adresów seeda wyprowadzony ze skryptu, a nie przepisany: literał
+# w testach przestałby pasować przy zmianie domeny i sprzątanie po cichu
+# zaczęłoby nie działać.
+WZORZEC = {"p": f"%@{seed.SEED_EMAIL_DOMAIN}"}
+
 
 @pytest.fixture
 def sprzatanie_seeda() -> None:
@@ -27,9 +32,9 @@ def sprzatanie_seeda() -> None:
         engine = create_async_engine(DATABASE_URL, poolclass=NullPool)
         async with engine.begin() as conn:
             await conn.execute(
-                text("UPDATE submissions SET team_id=NULL WHERE email LIKE 'seed-%'")
+                text("UPDATE submissions SET team_id=NULL WHERE email LIKE :p"), WZORZEC
             )
-            await conn.execute(text("DELETE FROM submissions WHERE email LIKE 'seed-%'"))
+            await conn.execute(text("DELETE FROM submissions WHERE email LIKE :p"), WZORZEC)
         await engine.dispose()
 
     asyncio.run(cleanup())
@@ -122,7 +127,7 @@ def test_pelny_przebieg_kasuje_i_zapisuje(sprzatanie_seeda: None) -> None:
         try:
             async with engine.connect() as conn:
                 result = await conn.execute(
-                    text("SELECT count(*) FROM submissions WHERE email LIKE 'seed-%'")
+                    text("SELECT count(*) FROM submissions WHERE email LIKE :p"), WZORZEC
                 )
                 return int(result.scalar_one())
         finally:
@@ -184,8 +189,8 @@ def test_clear_nie_rusza_rekordow_spoza_seeda() -> None:
         try:
             async with engine.begin() as conn:
                 await conn.execute(
-                    text("DELETE FROM submissions WHERE email = :e OR email LIKE 'seed-%'"),
-                    {"e": obcy_email},
+                    text("DELETE FROM submissions WHERE email = :e OR email LIKE :p"),
+                    {"e": obcy_email, **WZORZEC},
                 )
                 await conn.execute(text("DELETE FROM teams WHERE id = :t"), {"t": team_id})
         finally:
@@ -200,3 +205,128 @@ def test_clear_nie_rusza_rekordow_spoza_seeda() -> None:
         assert zespolow == 1, "zespół obcego zgłoszenia został skasowany przez --clear"
     finally:
         asyncio.run(posprzataj(team_id))
+
+
+def test_adres_zaczynajacy_sie_od_seed_nie_jest_kasowany() -> None:
+    """Powód zmiany znacznika z prefiksu na domenę.
+
+    Filtr `email LIKE 'seed-%'` kasowałby prawdziwe zgłoszenie o adresie
+    w rodzaju "seed-fund@alk.edu.pl" - prefiks bywa zwyczajnym fragmentem
+    adresu. Domena `seed.example.com` jest zarezerwowana normą RFC 2606:
+    nikt nie może jej zarejestrować i nie dochodzi tam poczta, więc żaden
+    uczestnik nie ma jak się nią zgłosić.
+    """
+    pulapka = f"seed-fundusz-{uuid4().hex[:8]}@alk.edu.pl"
+
+    async def wstaw() -> None:
+        engine = create_async_engine(DATABASE_URL, poolclass=NullPool)
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "INSERT INTO submissions (full_name, email, skills, availability) "
+                        "VALUES ('Prawdziwy Uczestnik', :e, ARRAY['python'], true)"
+                    ),
+                    {"e": pulapka},
+                )
+        finally:
+            await engine.dispose()
+
+    async def czy_istnieje() -> int:
+        engine = create_async_engine(DATABASE_URL, poolclass=NullPool)
+        try:
+            async with engine.connect() as conn:
+                result = await conn.execute(
+                    text("SELECT count(*) FROM submissions WHERE email = :e"), {"e": pulapka}
+                )
+                return int(result.scalar_one())
+        finally:
+            await engine.dispose()
+
+    async def posprzataj() -> None:
+        engine = create_async_engine(DATABASE_URL, poolclass=NullPool)
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text("DELETE FROM submissions WHERE email = :e OR email LIKE :p"),
+                    {"e": pulapka, **WZORZEC},
+                )
+        finally:
+            await engine.dispose()
+
+    asyncio.run(wstaw())
+    try:
+        asyncio.run(seed._run(count=3, clear=True))
+
+        assert asyncio.run(czy_istnieje()) == 1, "adres zaczynający się od 'seed-' został skasowany"
+    finally:
+        asyncio.run(posprzataj())
+
+
+def test_pusty_zespol_bez_seeda_zostaje_nietkniety() -> None:
+    """`--clear` nie sprząta cudzych pustych zespołów.
+
+    Pusty zespół mógł powstać nie przez ten skrypt i może być komuś potrzebny -
+    skrypt seedujący nie ma mandatu, żeby o tym decydować. Rusza wyłącznie
+    zespoły, w których faktycznie siedziały jego własne rekordy.
+
+    Scenariusz musi zawierać zespół Z REKORDEM SEEDA, inaczej `zespoly_seeda`
+    wychodzi puste, cały blok kasujący się nie wykonuje i test przechodziłby
+    także przy zepsutym kodzie. (Pierwsza wersja tego testu miała dokładnie
+    tę wadę - wyszło przy sprawdzeniu mutacyjnym.)
+    """
+
+    async def przygotuj() -> tuple[int, int]:
+        """Zwraca (pusty zespół obcy, zespół z rekordem seeda)."""
+        engine = create_async_engine(DATABASE_URL, poolclass=NullPool)
+        try:
+            async with engine.begin() as conn:
+                obcy = (
+                    await conn.execute(text("INSERT INTO teams DEFAULT VALUES RETURNING id"))
+                ).scalar_one()
+                poseedowy = (
+                    await conn.execute(text("INSERT INTO teams DEFAULT VALUES RETURNING id"))
+                ).scalar_one()
+                await conn.execute(
+                    text("UPDATE submissions SET team_id = :t WHERE email LIKE :p"),
+                    {"t": poseedowy, **WZORZEC},
+                )
+                return int(obcy), int(poseedowy)
+        finally:
+            await engine.dispose()
+
+    async def ktore_istnieja(ids: tuple[int, int]) -> set[int]:
+        engine = create_async_engine(DATABASE_URL, poolclass=NullPool)
+        try:
+            async with engine.connect() as conn:
+                result = await conn.execute(
+                    text("SELECT id FROM teams WHERE id = ANY(:ids)"), {"ids": list(ids)}
+                )
+                return {row[0] for row in result}
+        finally:
+            await engine.dispose()
+
+    async def posprzataj(ids: tuple[int, int]) -> None:
+        engine = create_async_engine(DATABASE_URL, poolclass=NullPool)
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("DELETE FROM submissions WHERE email LIKE :p"), WZORZEC)
+                await conn.execute(
+                    text("DELETE FROM teams WHERE id = ANY(:ids)"), {"ids": list(ids)}
+                )
+        finally:
+            await engine.dispose()
+
+    # Najpierw dane seeda, potem przypisanie ich do zespołu - dopiero wtedy
+    # `--clear` ma powód, żeby w ogóle sięgnąć do tabeli zespołów.
+    asyncio.run(seed._run(count=3, clear=True))
+    obcy, poseedowy = asyncio.run(przygotuj())
+
+    try:
+        asyncio.run(seed._run(count=3, clear=True))
+
+        istniejace = asyncio.run(ktore_istnieja((obcy, poseedowy)))
+        assert obcy in istniejace, "pusty zespół spoza seeda został skasowany"
+        assert poseedowy not in istniejace, "zespół po rekordach seeda powinien zniknąć"
+    finally:
+        asyncio.run(posprzataj((obcy, poseedowy)))

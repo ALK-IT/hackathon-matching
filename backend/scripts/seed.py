@@ -32,10 +32,22 @@ from app.schemas import SubmissionCreate
 
 DEFAULT_COUNT = 25
 
-# Prefiks adresów rekordów seeda. Jedno źródło prawdy dla generowania i dla
-# sprzątania: gdyby te dwa miejsca się rozjechały, `--clear` przestałby
-# cokolwiek kasować, a kolejne uruchomienie wywracało się na duplikatach.
-SEED_EMAIL_PREFIX = "seed-"
+# Domena rekordów seeda - znacznik, po którym `--clear` je rozpoznaje.
+# Jedno źródło prawdy dla generowania i sprzątania: gdyby te dwa miejsca się
+# rozjechały, `--clear` przestałby cokolwiek kasować, a kolejne uruchomienie
+# wywracało się na duplikatach.
+#
+# Cała domena, a nie prefiks adresu, bo prefiks bywa fragmentem prawdziwego
+# adresu ("seed-fund@alk.edu.pl") i taki rekord zostałby skasowany razem
+# z danymi testowymi. Domeny nie da się pomylić o tyle, że `example.com`
+# jest zarezerwowane normą (RFC 2606): nikt nie może jej zarejestrować i nie
+# dochodzi tam poczta, więc uczestnik nie ma jak się nią zgłosić - nie
+# dostałby żadnej wiadomości o przydziale do zespołu.
+#
+# `.invalid` i `.test` byłyby jeszcze dosadniejsze, ale odrzuca je walidacja
+# `EmailStr` ("special-use or reserved name"), a zależy nam, żeby dane seeda
+# przechodziły dokładnie tę samą kontrolę co prawdziwy formularz.
+SEED_EMAIL_DOMAIN = "seed.example.com"
 
 # Ziarno dobrane raz i na stałe - patrz uwaga o determinizmie w nagłówku.
 RANDOM_SEED = 2026
@@ -104,7 +116,7 @@ def _build_submissions(count: int) -> list[SubmissionCreate]:
         submissions.append(
             SubmissionCreate(
                 full_name=faker.name(),
-                email=f"{SEED_EMAIL_PREFIX}{index:03d}@example.com",
+                email=f"seed-{index:03d}@{SEED_EMAIL_DOMAIN}",
                 skills=faker.random_elements(
                     SKILL_POOL, length=faker.random_int(2, 5), unique=True
                 ),
@@ -138,22 +150,42 @@ async def _clear() -> None:
     1. odpięcie od zespołów, bo `Submission.team_id` wskazuje na `teams`,
        a obiekty wczytane wcześniej trzymałyby w pamięci nieaktualną wartość;
     2. skasowanie zgłoszeń seeda;
-    3. sprzątnięcie zespołów, w których po tym nikt nie został. Puste zespoły
-       nie niosą żadnej informacji - skład jest jedyną treścią zespołu - a i tak
-       skasowałby je pierwszy kolejny przebieg matchowania.
+    3. sprzątnięcie TYCH zespołów seeda, w których po skasowaniu nikt nie
+       został. Zespół mieszany zostaje, bo wciąż ma prawdziwy skład; zespoły
+       bez rekordów seeda nie są ruszane w ogóle - także puste, bo mogły
+       powstać nie przez ten skrypt i mogą być komuś potrzebne.
     """
-    pattern = f"{SEED_EMAIL_PREFIX}%"
+    pattern = f"%@{SEED_EMAIL_DOMAIN}"
 
     async with SessionLocal() as session:
+        # Zespoły, w których siedzą rekordy seeda - ustalane ZANIM je odepniemy,
+        # bo po odpięciu nie dałoby się już powiedzieć, gdzie były.
+        zespoly_seeda = (
+            (
+                await session.execute(
+                    select(Submission.team_id)
+                    .where(Submission.email.like(pattern), Submission.team_id.is_not(None))
+                    .distinct()
+                )
+            )
+            .scalars()
+            .all()
+        )
+
         await session.execute(
             update(Submission).where(Submission.email.like(pattern)).values(team_id=None)
         )
         await session.execute(delete(Submission).where(Submission.email.like(pattern)))
 
-        # `IS NOT NULL` w podzapytaniu jest konieczne: gdyby trafił tam NULL,
-        # `NOT IN` przestałoby zwracać cokolwiek i żaden zespół by nie zniknął.
-        zajete = select(Submission.team_id).where(Submission.team_id.is_not(None))
-        await session.execute(delete(Team).where(Team.id.not_in(zajete)))
+        if zespoly_seeda:
+            # Tylko te zespoły seeda, w których po skasowaniu nikt nie został.
+            # Zespół mieszany (seed + prawdziwy uczestnik) zostaje, bo nadal ma
+            # skład. Zespoły bez rekordów seeda nie są w ogóle rozpatrywane -
+            # także puste, bo mogą być komuś potrzebne i nie nasza to sprawa.
+            nadal_zajete = select(Submission.team_id).where(Submission.team_id.is_not(None))
+            await session.execute(
+                delete(Team).where(Team.id.in_(zespoly_seeda), Team.id.not_in(nadal_zajete))
+            )
 
         await session.commit()
 
