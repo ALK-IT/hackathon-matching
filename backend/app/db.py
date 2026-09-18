@@ -1,7 +1,13 @@
-import os
-
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
+
+from app.settings import settings
 
 
 def normalize_database_url(url: str) -> str:
@@ -14,15 +20,18 @@ def normalize_database_url(url: str) -> str:
     return url
 
 
-DATABASE_URL = normalize_database_url(
-    os.environ.get(
-        "DATABASE_URL",
-        "postgresql+asyncpg://hackathon:hackathon@localhost:5432/hackathon_matching",
-    )
-)
+# Skąd adres i co, gdy go brakuje (na Railway: błąd startu, lokalnie: baza
+# z docker-compose.yml) - rozstrzyga app/settings.py.
+DATABASE_URL = normalize_database_url(settings.database_url)
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+# Osobny silnik dla /health/ready (#91), bez puli (NullPool). Każde sprawdzenie
+# otwiera świeże połączenie, więc odpowiada na pytanie "czy DA SIĘ połączyć
+# z bazą" i nie zabiera połączeń prawdziwym żądaniom - także wtedy, gdy
+# przerwane sprawdzenie jeszcze sprząta po sobie (patrz services/health.py).
+readiness_engine = create_async_engine(DATABASE_URL, poolclass=NullPool)
 
 
 class Base(DeclarativeBase):
@@ -37,3 +46,7 @@ class Base(DeclarativeBase):
 async def get_session() -> AsyncSession:
     async with SessionLocal() as session:
         yield session
+
+
+def get_readiness_engine() -> AsyncEngine:
+    return readiness_engine

@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Submission
 from app.repositories import submissions as repository
 from app.schemas import SubmissionCreate
+from app.settings import settings
 
 
 class DuplicateEmailError(Exception):
@@ -41,16 +42,13 @@ def _violated_constraint(error: IntegrityError) -> str | None:
     return name if isinstance(name, str) else None
 
 
-# Limit wyprowadzony z pomiarów, nie z powietrza: największe realne hackathony
-# to 1-2 tys. osób, a przy 3 tys. rekordów niepaginowany GET /api/submissions
-# zwraca ~0,6-0,7 MB JSON-u - dziesięciokrotnie więcej byłoby już problemem.
-# Limit ma zatrzymać MASOWE fałszywe zgłoszenia (wektor DoS z #57), nie
-# 3001. uczestnika. Sprawdzenie licznikiem bez locka jest ŚWIADOMIE miękkie:
-# w oknie count->insert równoległe żądania mogą przepuścić ponad limit tyle
-# rekordów, ile klient zdąży wystrzelić naraz (ogranicza to pula połączeń,
-# nie ta stała). To nie jest twarda gwarancja - twardym sufitem kosztu CPU
-# jest MAX_MATCHED_PARTICIPANTS i budżet pracy w warstwach 2-3.
-MAX_TOTAL_SUBMISSIONS = 3000
+# Limit wszystkich zgłoszeń (#57) - wartość i jej uzasadnienie w app/settings.py.
+# Sprawdzenie licznikiem bez locka jest ŚWIADOMIE miękkie: w oknie
+# count->insert równoległe żądania mogą przepuścić ponad limit tyle rekordów,
+# ile klient zdąży wystrzelić naraz (ogranicza to pula połączeń, nie ta
+# wartość). To nie jest twarda gwarancja - twardym sufitem kosztu CPU jest
+# MAX_MATCHED_PARTICIPANTS i budżet pracy w warstwach 2-3.
+MAX_TOTAL_SUBMISSIONS = settings.max_total_submissions
 
 
 async def submit(session: AsyncSession, payload: SubmissionCreate) -> Submission:

@@ -27,6 +27,21 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # "Zdrowy" = backend odpowiada I dogaduje się z bazą (/health/ready, #91),
+    # a nie tylko "proces żyje". Obraz python:slim nie ma curla, więc pytamy
+    # Pythonem: urlopen rzuca wyjątkiem przy 503, czyli healthcheck oblewa.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   frontend:
     build:
@@ -35,8 +50,13 @@ services:
         VITE_API_URL: http://localhost:8000
     ports:
       - "5173:80"
+    # Frontend startuje dopiero, gdy backend dogaduje się z bazą - bez tego
+    # frontend mógł wstać przed backendem. Tabel to nie zakłada: /health/ready
+    # pyta o połączenie, więc na świeżej bazie trzeba jeszcze uruchomić
+    # migracje (README, "Uruchomienie w Dockerze").
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   postgres-data:

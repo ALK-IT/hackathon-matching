@@ -57,6 +57,12 @@ docker compose up --build
 - Frontend: http://localhost:5173
 - Backend: http://localhost:8000 (dokumentacja API: http://localhost:8000/docs)
 
+Przy pierwszym uruchomieniu (świeża baza) trzeba jeszcze założyć tabele — bez tego lista zgłoszeń zwraca błąd 500:
+
+```bash
+docker compose exec backend alembic upgrade head
+```
+
 Zatrzymanie: `docker compose down`. Rebuild po zmianie zależności: `docker compose up --build`.
 
 ## Uruchomienie lokalne (bez Dockera)
@@ -93,7 +99,9 @@ uvicorn app.main:app --reload
 
 Backend słucha na http://localhost:8000, interaktywna dokumentacja API: **http://localhost:8000/docs**.
 
-`DATABASE_URL` nie trzeba ustawiać — domyślna wartość wskazuje dokładnie na bazę z `docker-compose.yml`. Pełna lista zmiennych środowiskowych jest w [sekcji Deploy](#deploy).
+Lokalnie `DATABASE_URL` nie trzeba ustawiać — bez niego backend łączy się z bazą z `docker-compose.yml`. Własne ustawienia wpisuje się w `backend/.env` (wzór: [`backend/.env.example`](backend/.env.example)), pełna lista zmiennych jest w [sekcji Deploy](#deploy).
+
+Czy backend działa, sprawdzają dwa adresy: `GET /health` — proces żyje (nie pyta bazy) i `GET /health/ready` — backend może obsługiwać ruch, bo odpowiada mu baza (przy awarii zwraca **503**). Docker compose uznaje backend za zdrowy właśnie po `/health/ready`.
 
 ## Przykłady API
 
@@ -165,13 +173,26 @@ Wymagane sekrety repozytorium (Settings → Secrets and variables → Actions):
 | `RAILWAY_SERVICE` | Nazwa/ID serwisu Railway (backend) |
 | `DISCORD_WEBHOOK_URL` | Powiadomienia na Discordzie (opcjonalnie) |
 
-Zmienne środowiskowe backendu (ustawiane w panelu Railway, nie w sekretach GitHuba):
+Zmienne środowiskowe backendu (ustawiane w panelu Railway, nie w sekretach GitHuba). Wszystkie czyta jedno miejsce — `backend/app/settings.py` — i sprawdza je **przy starcie**: błędna konfiguracja zatrzymuje uruchomienie z komunikatem, co poprawić, zamiast wyjść dopiero jako błąd 500 przy pierwszym żądaniu (#95).
 
 | Zmienna | Domyślnie | Do czego służy |
 |---|---|---|
-| `DATABASE_URL` | lokalny Postgres z `docker-compose.yml` | Połączenie z bazą; `postgres://` i `postgresql://` są normalizowane do `+asyncpg` |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173`, `http://127.0.0.1:5173`, adres produkcyjny frontendu | Lista adresów po przecinku, którym przeglądarka pozwoli czytać odpowiedzi API. **Pusta wartość nie oznacza „wpuść wszystkich" — zostawia listę domyślną.** Po zmianie adresu frontendu trzeba ją zaktualizować, inaczej front dostanie błąd CORS |
-| `CORS_ALLOWED_ORIGIN_REGEX` | wyłączone | Wzorzec dodatkowych adresów, np. podglądów z Vercela, które dostają adres per gałąź: `^https://hackathon-matching-[a-z0-9-]+\.vercel\.app$` |
+| `DATABASE_URL` | lokalnie: Postgres z `docker-compose.yml`; **na Railway wymagany** | Połączenie z bazą; `postgres://` i `postgresql://` są normalizowane do `+asyncpg`. Na Railway brak (albo pusta wartość) zatrzymuje start — wcześniej backend po cichu łączył się z nieistniejącym `localhost` |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:5173`, `http://127.0.0.1:5173`, adres produkcyjny frontendu | Lista adresów po przecinku, którym przeglądarka pozwoli czytać odpowiedzi API. **Pusta wartość nie oznacza „wpuść wszystkich" — zostawia listę domyślną.** Po zmianie adresu frontendu trzeba ją zaktualizować, inaczej front dostanie błąd CORS. **`*` i `null` są zabronione** i zatrzymują start (#60) |
+| `CORS_ALLOWED_ORIGIN_REGEX` | wyłączone | Wzorzec dodatkowych adresów, np. podglądów z Vercela, które dostają adres per gałąź: `^https://hackathon-matching-[a-z0-9-]+\.vercel\.app$`. Błędny wzorzec albo taki, który wpuszcza obce strony (np. `.*` czy każda aplikacja na `vercel.app`), zatrzymuje start — działałby jak `*` |
+| `MIN_TEAM_SIZE`, `MAX_TEAM_SIZE` | `1`, `20` | Dopuszczalny rozmiar zespołu w `POST /api/match` (twardy sufit: 50). Frontend wysyła `team_size=3`, więc zakres musi obejmować 3 |
+| `MAX_TOTAL_SUBMISSIONS` | `3000` | Limit wszystkich zgłoszeń w bazie (#57; twardy sufit: 10 000 — wyżej dopiero po paginacji listy) |
+| `MAX_MATCHED_PARTICIPANTS` | `2000` | Limit osób w jednym matchowaniu (#57; twardy sufit: 5000) |
+
+Healthcheck serwisu w panelu Railway powinien wskazywać **`/health/ready`** — wtedy wdrożenie, które nie dogada się z bazą, zostanie oznaczone jako nieudane, zamiast przejść jako „zdrowe". Railway wysyła healthcheck na port ze zmiennej `PORT`, a backend słucha na `8000` (`backend/Dockerfile`), więc w zmiennych serwisu musi być `PORT=8000`.
+
+Zielony workflow `deploy-backend` znaczy tylko, że kod wysłano na Railway (`railway up --detach`) — nie, że backend wstał. Po zmianie zmiennych albo wdrożeniu zmian w konfiguracji sprawdź w panelu Railway, że:
+
+- `DATABASE_URL` jest ustawiony i niepusty,
+- `CORS_ALLOWED_ORIGINS` nie zawiera `*` ani `null`,
+- limity (jeśli ustawione) mieszczą się w sufitach z tabeli,
+- healthcheck wskazuje `/health/ready` (nie usunięte w #91 `/api/hello` ani `/api/db-check` — te zwracają teraz 404), a `PORT=8000`,
+- log wdrożenia nie kończy się błędem konfiguracji.
 
 ## Zasady współpracy
 
