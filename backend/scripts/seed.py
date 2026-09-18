@@ -4,7 +4,7 @@ Uruchomienie, z katalogu `backend/`:
 
     python -m scripts.seed              # dokłada 25 zgłoszeń
     python -m scripts.seed --count 30   # inna liczba
-    python -m scripts.seed --clear      # najpierw kasuje zgłoszenia i zespoły
+    python -m scripts.seed --clear      # najpierw kasuje POPRZEDNIE dane seeda
 
 Po co: bez danych `POST /api/match` odpowiada 409 "brak zgłoszeń", a ręczne
 wklepywanie dwudziestu curli tylko po to, żeby zobaczyć działające matchowanie,
@@ -21,7 +21,7 @@ import asyncio
 import sys
 
 from faker import Faker
-from sqlalchemy import delete
+from sqlalchemy import delete, select, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 
@@ -31,6 +31,11 @@ from app.models import Submission, Team
 from app.schemas import SubmissionCreate
 
 DEFAULT_COUNT = 25
+
+# Prefiks adresów rekordów seeda. Jedno źródło prawdy dla generowania i dla
+# sprzątania: gdyby te dwa miejsca się rozjechały, `--clear` przestałby
+# cokolwiek kasować, a kolejne uruchomienie wywracało się na duplikatach.
+SEED_EMAIL_PREFIX = "seed-"
 
 # Ziarno dobrane raz i na stałe - patrz uwaga o determinizmie w nagłówku.
 RANDOM_SEED = 2026
@@ -99,7 +104,7 @@ def _build_submissions(count: int) -> list[SubmissionCreate]:
         submissions.append(
             SubmissionCreate(
                 full_name=faker.name(),
-                email=f"seed-{index:03d}@example.com",
+                email=f"{SEED_EMAIL_PREFIX}{index:03d}@example.com",
                 skills=faker.random_elements(
                     SKILL_POOL, length=faker.random_int(2, 5), unique=True
                 ),
@@ -116,15 +121,40 @@ def _build_submissions(count: int) -> list[SubmissionCreate]:
 
 
 async def _clear() -> None:
-    """Kasuje zgłoszenia i zespoły.
+    """Kasuje WYŁĄCZNIE rekordy seeda, rozpoznane po prefiksie adresu.
 
-    Zgłoszenia najpierw, bo to one wskazują na zespoły; odwrotna kolejność
-    opierałaby się na `ON DELETE SET NULL` i zostawiała w sesji obiekty
-    z nieaktualnym `team_id`.
+    Wcześniej było tu `delete(Submission)` i `delete(Team)` bez żadnego
+    filtra, czyli czyszczenie całych tabel. Na współdzielonej lokalnej bazie
+    z trwałym wolumenem (patrz `docker-compose.yml`) oznaczało to, że jedno
+    `--clear` kasowało prawdziwe zgłoszenia wpisane ręcznie do testów -
+    po cichu i bez możliwości odtworzenia.
+
+    Filtrowanie po prefiksie jest zresztą wzorcem, który reszta repozytorium
+    stosuje konsekwentnie: `_delete_by_prefix` w `test_match_hardening.py`
+    i fixture'y sprzątające w testach zgłoszeń robią dokładnie to samo.
+
+    Kolejność kroków wynika z powiązań:
+
+    1. odpięcie od zespołów, bo `Submission.team_id` wskazuje na `teams`,
+       a obiekty wczytane wcześniej trzymałyby w pamięci nieaktualną wartość;
+    2. skasowanie zgłoszeń seeda;
+    3. sprzątnięcie zespołów, w których po tym nikt nie został. Puste zespoły
+       nie niosą żadnej informacji - skład jest jedyną treścią zespołu - a i tak
+       skasowałby je pierwszy kolejny przebieg matchowania.
     """
+    pattern = f"{SEED_EMAIL_PREFIX}%"
+
     async with SessionLocal() as session:
-        await session.execute(delete(Submission))
-        await session.execute(delete(Team))
+        await session.execute(
+            update(Submission).where(Submission.email.like(pattern)).values(team_id=None)
+        )
+        await session.execute(delete(Submission).where(Submission.email.like(pattern)))
+
+        # `IS NOT NULL` w podzapytaniu jest konieczne: gdyby trafił tam NULL,
+        # `NOT IN` przestałoby zwracać cokolwiek i żaden zespół by nie zniknął.
+        zajete = select(Submission.team_id).where(Submission.team_id.is_not(None))
+        await session.execute(delete(Team).where(Team.id.not_in(zajete)))
+
         await session.commit()
 
 
@@ -163,7 +193,7 @@ async def _run(count: int, clear: bool) -> None:
     try:
         if clear:
             await _clear()
-            print("Skasowano dotychczasowe zgłoszenia i zespoły.")
+            print("Skasowano poprzednie dane seeda.")
 
         try:
             await _insert(_build_submissions(count))
@@ -188,7 +218,9 @@ def main() -> None:
         "--count", type=int, default=DEFAULT_COUNT, help=f"ile zgłoszeń (domyślnie {DEFAULT_COUNT})"
     )
     parser.add_argument(
-        "--clear", action="store_true", help="skasuj istniejące zgłoszenia i zespoły przed zapisem"
+        "--clear",
+        action="store_true",
+        help="skasuj poprzednie dane seeda przed zapisem (nie rusza pozostałych rekordów)",
     )
     args = parser.parse_args()
 

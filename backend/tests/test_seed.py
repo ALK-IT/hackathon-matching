@@ -6,6 +6,7 @@ matchowania (różnorodne, deterministyczne, poprawne wobec walidacji API) oraz
 """
 
 import asyncio
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
@@ -128,3 +129,74 @@ def test_pelny_przebieg_kasuje_i_zapisuje(sprzatanie_seeda: None) -> None:
             await engine.dispose()
 
     assert asyncio.run(policz()) == 5
+
+
+def test_clear_nie_rusza_rekordow_spoza_seeda() -> None:
+    """Regresja na uwagę z review #128: `--clear` kasował CAŁE tabele.
+
+    Wcześniej `_clear()` robiło `delete(Submission)` i `delete(Team)` bez
+    żadnego filtra. Na współdzielonej lokalnej bazie z trwałym wolumenem
+    oznaczało to, że samo uruchomienie `pytest` - przez ten plik - kasowało
+    prawdziwe zgłoszenia wpisane ręcznie przez dewelopera. Po cichu i bez
+    możliwości odtworzenia.
+
+    Scenariusz sprawdza wszystkie trzy kroki `_clear()` naraz: obcy rekord
+    ma przetrwać, ma zachować przypisanie do zespołu, a jego zespół nie może
+    paść przy sprzątaniu zespołów pustych.
+    """
+    obcy_email = f"nie-seed-{uuid4().hex[:8]}@example.com"
+
+    async def przygotuj() -> int:
+        engine = create_async_engine(DATABASE_URL, poolclass=NullPool)
+        try:
+            async with engine.begin() as conn:
+                team_id = (
+                    await conn.execute(text("INSERT INTO teams DEFAULT VALUES RETURNING id"))
+                ).scalar_one()
+                await conn.execute(
+                    text(
+                        "INSERT INTO submissions (full_name, email, skills, availability, team_id) "
+                        "VALUES ('Prawdziwy Uczestnik', :e, ARRAY['python'], true, :t)"
+                    ),
+                    {"e": obcy_email, "t": team_id},
+                )
+                return int(team_id)
+        finally:
+            await engine.dispose()
+
+    async def sprawdz(team_id: int) -> tuple[int, int]:
+        engine = create_async_engine(DATABASE_URL, poolclass=NullPool)
+        try:
+            async with engine.connect() as conn:
+                zgloszen = await conn.execute(
+                    text("SELECT count(*) FROM submissions WHERE email = :e AND team_id = :t"),
+                    {"e": obcy_email, "t": team_id},
+                )
+                zespolow = await conn.execute(
+                    text("SELECT count(*) FROM teams WHERE id = :t"), {"t": team_id}
+                )
+                return int(zgloszen.scalar_one()), int(zespolow.scalar_one())
+        finally:
+            await engine.dispose()
+
+    async def posprzataj(team_id: int) -> None:
+        engine = create_async_engine(DATABASE_URL, poolclass=NullPool)
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text("DELETE FROM submissions WHERE email = :e OR email LIKE 'seed-%'"),
+                    {"e": obcy_email},
+                )
+                await conn.execute(text("DELETE FROM teams WHERE id = :t"), {"t": team_id})
+        finally:
+            await engine.dispose()
+
+    team_id = asyncio.run(przygotuj())
+    try:
+        asyncio.run(seed._run(count=3, clear=True))
+
+        zgloszen, zespolow = asyncio.run(sprawdz(team_id))
+        assert zgloszen == 1, "obce zgłoszenie zostało skasowane przez --clear"
+        assert zespolow == 1, "zespół obcego zgłoszenia został skasowany przez --clear"
+    finally:
+        asyncio.run(posprzataj(team_id))
