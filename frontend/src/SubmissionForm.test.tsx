@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react'
 import SubmissionForm from './SubmissionForm'
 
+// Zakres tego pliku: PODPIĘCIE walidacji do interfejsu - czy komunikat trafia
+// na ekran, czy blokuje wysyłkę, czy pole dostaje aria-invalid, gdzie ląduje
+// fokus. Same reguły ("który komunikat dla jakiego wejścia") są sprawdzane
+// bezpośrednio w submissionValidation.test.ts, bez renderowania komponentu -
+// szybciej i z dokładnym wskazaniem, co się zepsuło (#117).
+
 /** Wypełnia wszystkie pola poprawnymi danymi. Testy zmieniają potem tylko to,
  *  co faktycznie badają - dołożenie kolejnego pola do formularza wymaga wtedy
  *  poprawki w jednym miejscu. */
@@ -94,21 +100,6 @@ describe('SubmissionForm', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('nie wysyła zgłoszenia, gdy w umiejętnościach są same przecinki', async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
-
-    const { container } = render(<SubmissionForm />)
-    fillForm()
-    fireEvent.change(screen.getByLabelText(/umiejętności/i), { target: { value: ' , , ' } })
-    fireEvent.submit(container.querySelector('form')!)
-
-    // Sedno #65: pole WYGLĄDA na wypełnione, więc ogólne "wypełnij wszystkie
-    // pola" czytało się jak awaria aplikacji. Komunikat musi tłumaczyć powód.
-    expect(await screen.findByText(/same przecinki to za mało/i)).toBeInTheDocument()
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-
   it('pokazuje komunikat błędu z backendu (np. duplikat email)', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,
@@ -149,22 +140,6 @@ describe('SubmissionForm', () => {
   })
   // --- testy z issues #63 (limity), #64 (a11y) i #65 (konkretne komunikaty) ---
 
-  it('wskazuje każde brakujące pole osobno zamiast jednego komunikatu (#65)', async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
-
-    const { container } = render(<SubmissionForm />)
-    fireEvent.submit(container.querySelector('form')!)
-
-    expect(await screen.findByText('Podaj imię i nazwisko.')).toBeInTheDocument()
-    expect(screen.getByText('Podaj adres e-mail.')).toBeInTheDocument()
-    expect(screen.getByText('Podaj co najmniej jedną umiejętność.')).toBeInTheDocument()
-    expect(screen.getByText('Wybierz poziom doświadczenia.')).toBeInTheDocument()
-    expect(screen.getByText('Wybierz preferowaną rolę.')).toBeInTheDocument()
-    expect(screen.queryByText(/wypełnij wszystkie pola/i)).not.toBeInTheDocument()
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-
   it('pola tekstowe mają maxLength zgodny z limitami backendu (#63)', () => {
     render(<SubmissionForm />)
 
@@ -182,36 +157,6 @@ describe('SubmissionForm', () => {
     })
 
     expect(screen.getByText(/3 z 20 umiejętności/i)).toBeInTheDocument()
-  })
-
-  it('odrzuca listę dłuższą niż 20 umiejętności przed wysłaniem (#63)', async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
-
-    const { container } = render(<SubmissionForm />)
-    fillForm()
-    fireEvent.change(screen.getByLabelText(/umiejętności/i), {
-      target: { value: Array.from({ length: 21 }, (_, i) => `skill${i}`).join(', ') },
-    })
-    fireEvent.submit(container.querySelector('form')!)
-
-    expect(await screen.findByText(/najwyżej 20 umiejętności \(masz 21\)/i)).toBeInTheDocument()
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-
-  it('odrzuca umiejętność dłuższą niż 50 znaków przed wysłaniem (#63)', async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
-
-    const { container } = render(<SubmissionForm />)
-    fillForm()
-    fireEvent.change(screen.getByLabelText(/umiejętności/i), {
-      target: { value: `python, ${'x'.repeat(51)}` },
-    })
-    fireEvent.submit(container.querySelector('form')!)
-
-    expect(await screen.findByText(/najwyżej 50 znaków/i)).toBeInTheDocument()
-    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('błędne pole dostaje aria-invalid i wskazuje swój komunikat (#64)', async () => {
