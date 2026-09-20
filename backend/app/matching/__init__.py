@@ -8,5 +8,6 @@ i nie wie nic o bazie ani o HTTP.
 
 Warianty i kryteria, które optymalizują, opisuje [README.md](README.md):
 `baseline.random_teams` (punkt odniesienia) i `balanced.balanced_teams`
-(wyrównane doświadczenie, różnorodność ról i umiejętności).
+(wyrównane doświadczenie, różnorodność ról i umiejętności). Jakość podziału
+mierzy `metrics.score_teams`, a warianty porównuje `python -m app.matching.compare`.
 """
