@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
 import app.matching.balanced as balanced_module
+import app.matching.objective as objective_module
+import app.matching.repair as repair_module
 import app.services.matching as matching_service
 import app.services.submissions as submissions_service
 from app.db import DATABASE_URL
@@ -223,7 +225,7 @@ def test_participant_cap_on_matching_returns_409(
 def test_tiny_repair_budget_still_yields_valid_teams(monkeypatch: pytest.MonkeyPatch) -> None:
     """#57 warstwa 3: wyczerpany budżet kończy naprawę, ale wynik pozostaje
     poprawnym podziałem - gwarancje pochodzą z faz 1-3, nie z naprawy."""
-    monkeypatch.setattr(balanced_module, "_MAX_REPAIR_WORK", 1)
+    monkeypatch.setattr(repair_module, "_MAX_REPAIR_WORK", 1)
 
     people = _people(23)
 
@@ -234,10 +236,10 @@ def test_tiny_repair_budget_still_yields_valid_teams(monkeypatch: pytest.MonkeyP
     assert sorted(id(p) for p in assigned) == sorted(id(p) for p in people)
 
     # Gwarancja nie-beginnera obowiązuje także przy zerowym budżecie naprawy.
-    non_beginners = sum(1 for p in people if balanced_module.experience_points(p) >= 2)
+    non_beginners = sum(1 for p in people if objective_module.experience_points(p) >= 2)
     assert non_beginners >= len(teams)
     for team in teams:
-        assert any(balanced_module.experience_points(p) >= 2 for p in team)
+        assert any(objective_module.experience_points(p) >= 2 for p in team)
 
 
 def test_repair_budget_actually_stops_the_repair(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -255,10 +257,10 @@ def test_repair_budget_actually_stops_the_repair(monkeypatch: pytest.MonkeyPatch
     zostawiały naprawie realny zysk do wzięcia - inaczej oba przebiegi
     dawałyby to samo i test nie mierzyłby niczego.
     """
-    monkeypatch.setattr(balanced_module, "_MAX_REPAIR_WORK", 10**12)
-    full = balanced_module.objective(balanced_module.balanced_teams(_people(30), 4))
+    monkeypatch.setattr(repair_module, "_MAX_REPAIR_WORK", 10**12)
+    full = objective_module.objective(balanced_module.balanced_teams(_people(30), 4))
 
-    monkeypatch.setattr(balanced_module, "_MAX_REPAIR_WORK", 1)
-    truncated = balanced_module.objective(balanced_module.balanced_teams(_people(30), 4))
+    monkeypatch.setattr(repair_module, "_MAX_REPAIR_WORK", 1)
+    truncated = objective_module.objective(balanced_module.balanced_teams(_people(30), 4))
 
     assert truncated > full

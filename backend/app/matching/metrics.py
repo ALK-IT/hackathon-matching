@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from app.enums import ExperienceLevel, PreferredRole
-from app.matching.balanced import (
+from app.matching.objective import (
     EXPERIENCE_POINTS,
     Participant,
     experience_points,
