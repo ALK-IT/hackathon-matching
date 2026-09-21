@@ -10,6 +10,7 @@ import {
   type ExperienceLevel,
   type PreferredRole,
 } from './submissionProfile'
+import { colors, fontSizes } from './theme'
 import {
   FIELD_ORDER,
   validate,
@@ -25,8 +26,8 @@ type Props = {
 }
 
 const fieldStyle = { display: 'block', width: '100%' }
-const errorStyle = { color: 'crimson', margin: '.25rem 0 0', fontSize: '.875rem' } as const
-const hintStyle = { color: '#555', margin: '.25rem 0 0', fontSize: '.875rem' } as const
+const errorStyle = { color: colors.error, margin: '.25rem 0 0', fontSize: fontSizes.small } as const
+const hintStyle = { color: colors.hint, margin: '.25rem 0 0', fontSize: fontSizes.small } as const
 
 function SubmissionForm({ onSuccess }: Props) {
   const [fullName, setFullName] = useState('')
@@ -251,9 +252,9 @@ function SubmissionForm({ onSuccess }: Props) {
       {/* role="status" (grzeczne) dla sukcesu, role="alert" (natychmiastowe)
           dla błędu - inaczej czytnik ekranu nie powie o nich ani słowa, bo
           oba <p> pojawiają się i znikają bez zmiany fokusu (#64). */}
-      {status === 'success' && <p role="status" style={{ color: 'green' }}>Zgłoszenie wysłane</p>}
+      {status === 'success' && <p role="status" style={{ color: colors.success }}>Zgłoszenie wysłane</p>}
       {status === 'error' && errorMessage && (
-        <p role="alert" style={{ color: 'crimson' }}>{errorMessage}</p>
+        <p role="alert" style={{ color: colors.error }}>{errorMessage}</p>
       )}
     </form>
   )

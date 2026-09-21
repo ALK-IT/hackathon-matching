@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getSubmissions, toErrorMessage, type Submission } from './api'
 import { EXPERIENCE_LEVEL_LABELS, PREFERRED_ROLE_LABELS, labelFor } from './submissionProfile'
+import { colors, fontSizes } from './theme'
 
 type Status = 'loading' | 'ready' | 'error'
 
@@ -11,8 +12,8 @@ type Props = {
   reloadToken?: number
 }
 
-const headerStyle = { textAlign: 'left', borderBottom: '1px solid #ccc', padding: '.4rem .5rem .4rem 0' } as const
-const cellStyle = { borderBottom: '1px solid #eee', padding: '.4rem .5rem .4rem 0', verticalAlign: 'top' } as const
+const headerStyle = { textAlign: 'left', borderBottom: `1px solid ${colors.border}`, padding: '.4rem .5rem .4rem 0' } as const
+const cellStyle = { borderBottom: `1px solid ${colors.borderSubtle}`, padding: '.4rem .5rem .4rem 0', verticalAlign: 'top' } as const
 
 const COLUMNS = ['Imię i nazwisko', 'Email', 'Umiejętności', 'Poziom', 'Rola', 'Pełna dostępność']
 
@@ -61,7 +62,7 @@ function SubmissionList({ reloadToken = 0 }: Props) {
   return (
     <section style={{ maxWidth: '56rem', margin: '3rem auto 0', textAlign: 'left' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '1rem' }}>
-        <h2 style={{ fontSize: '1.1rem' }}>Zgłoszeni uczestnicy</h2>
+        <h2 style={{ fontSize: fontSizes.sectionHeading }}>Zgłoszeni uczestnicy</h2>
         <button type="button" onClick={() => void load()} disabled={status === 'loading'}>
           {status === 'loading' ? 'Odświeżanie...' : 'Odśwież'}
         </button>
@@ -70,7 +71,7 @@ function SubmissionList({ reloadToken = 0 }: Props) {
       {status === 'loading' && <p>Ładowanie zgłoszeń...</p>}
 
       {status === 'error' && (
-        <p role="alert" style={{ color: 'crimson' }}>
+        <p role="alert" style={{ color: colors.error }}>
           {errorMessage}
         </p>
       )}
