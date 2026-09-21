@@ -5,8 +5,9 @@ from dataclasses import dataclass, field
 import pytest
 
 from app.enums import ExperienceLevel, PreferredRole
-from app.matching.balanced import balanced_teams, team_experience_points
+from app.matching.balanced import balanced_teams
 from app.matching.baseline import random_teams, team_sizes
+from app.matching.objective import team_experience_points
 
 BEGINNER = ExperienceLevel.BEGINNER
 INTERMEDIATE = ExperienceLevel.INTERMEDIATE
