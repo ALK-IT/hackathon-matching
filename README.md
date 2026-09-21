@@ -57,13 +57,11 @@ docker compose up --build
 - Frontend: http://localhost:5173
 - Backend: http://localhost:8000 (dokumentacja API: http://localhost:8000/docs)
 
-Przy pierwszym uruchomieniu (świeża baza) trzeba jeszcze założyć tabele — bez tego lista zgłoszeń zwraca błąd 500:
+Migracji nie trzeba uruchamiać ręcznie: usługa `migrate` robi `alembic upgrade head` przed startem backendu — przy pierwszym uruchomieniu i po każdej nowej migracji z repozytorium (migracje bierze z obrazu, więc po `git pull` potrzebny jest `docker compose up --build`). Backend startuje po niej, a frontend dopiero po zdrowym backendzie.
 
-```bash
-docker compose exec backend alembic upgrade head
-```
+Jeśli wcześniej uruchamiałeś gałąź z **nowszą** migracją, `migrate` nie rozpozna wersji zapisanej w lokalnej bazie i zatrzyma start całego stosu (w logu usługi `migrate`: „Can't locate revision identified by…”). Wyjście: wrócić na tamtą gałąź i cofnąć migrację (`docker compose run --rm backend alembic downgrade -1`) albo skasować lokalną bazę razem z danymi (`docker compose down -v`).
 
-Zatrzymanie: `docker compose down`. Rebuild po zmianie zależności: `docker compose up --build`.
+Zatrzymanie: `docker compose down`. Rebuild po zmianie kodu lub zależności: `docker compose up --build`.
 
 ## Uruchomienie lokalne (bez Dockera)
 
@@ -101,7 +99,7 @@ Backend słucha na http://localhost:8000, interaktywna dokumentacja API: **http:
 
 Lokalnie `DATABASE_URL` nie trzeba ustawiać — bez niego backend łączy się z bazą z `docker-compose.yml`. Własne ustawienia wpisuje się w `backend/.env` (wzór: [`backend/.env.example`](backend/.env.example)), pełna lista zmiennych jest w [sekcji Deploy](#deploy).
 
-Czy backend działa, sprawdzają dwa adresy: `GET /health` — proces żyje (nie pyta bazy) i `GET /health/ready` — backend może obsługiwać ruch, bo odpowiada mu baza (przy awarii zwraca **503**). Docker compose uznaje backend za zdrowy właśnie po `/health/ready`.
+Czy backend działa, sprawdzają dwa adresy: `GET /health` — proces żyje (nie pyta bazy) i `GET /health/ready` — backend może obsługiwać ruch: odpowiada mu baza i ma ona wykonane wszystkie migracje. Inaczej zwraca **503**, a pola `database` i `schema` w odpowiedzi mówią, co jest nie tak (szczegóły, np. której migracji brakuje, są w logu backendu). Docker compose uznaje backend za zdrowy właśnie po `/health/ready`.
 
 ## Przykłady API
 
@@ -184,13 +182,16 @@ Zmienne środowiskowe backendu (ustawiane w panelu Railway, nie w sekretach GitH
 | `MAX_TOTAL_SUBMISSIONS` | `3000` | Limit wszystkich zgłoszeń w bazie (#57; twardy sufit: 10 000 — wyżej dopiero po paginacji listy) |
 | `MAX_MATCHED_PARTICIPANTS` | `2000` | Limit osób w jednym matchowaniu (#57; twardy sufit: 5000) |
 
-Healthcheck serwisu w panelu Railway powinien wskazywać **`/health/ready`** — wtedy wdrożenie, które nie dogada się z bazą, zostanie oznaczone jako nieudane, zamiast przejść jako „zdrowe". Railway wysyła healthcheck na port ze zmiennej `PORT`, a backend słucha na `8000` (`backend/Dockerfile`), więc w zmiennych serwisu musi być `PORT=8000`.
+Healthcheck serwisu w panelu Railway powinien wskazywać **`/health/ready`** — wtedy wdrożenie, które nie dogada się z bazą albo trafi na bazę bez aktualnych migracji, zostanie oznaczone jako nieudane, zamiast przejść jako „zdrowe". Railway wysyła healthcheck na port ze zmiennej `PORT`, a backend słucha na `8000` (`backend/Dockerfile`), więc w zmiennych serwisu musi być `PORT=8000`.
+
+Migracje muszą być wykonane, zanim nowa wersja przejdzie healthcheck. Najprościej ustawić w serwisie na Railway **Pre-Deploy Command** `alembic upgrade head` — Railway uruchamia ją po zbudowaniu obrazu, przed wdrożeniem, a gdy się nie uda, wdrożenie nie rusza. Uwaga na wdrożenie starszej wersji kodu na bazę z nowszą migracją: ta komenda nie rozpozna wtedy wersji zapisanej w bazie i zatrzyma wdrożenie (samo `/health/ready` taką bazę przepuszcza — kodowi niczego nie brakuje).
 
 Zielony workflow `deploy-backend` znaczy tylko, że kod wysłano na Railway (`railway up --detach`) — nie, że backend wstał. Po zmianie zmiennych albo wdrożeniu zmian w konfiguracji sprawdź w panelu Railway, że:
 
 - `DATABASE_URL` jest ustawiony i niepusty,
 - `CORS_ALLOWED_ORIGINS` nie zawiera `*` ani `null`,
 - limity (jeśli ustawione) mieszczą się w sufitach z tabeli,
+- Pre-Deploy Command to `alembic upgrade head` (albo migracje uruchomiono ręcznie),
 - healthcheck wskazuje `/health/ready` (nie usunięte w #91 `/api/hello` ani `/api/db-check` — te zwracają teraz 404), a `PORT=8000`,
 - log wdrożenia nie kończy się błędem konfiguracji.
 

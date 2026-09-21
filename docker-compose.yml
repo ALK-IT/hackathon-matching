@@ -1,3 +1,13 @@
+# Backend i migracje to ten sam Dockerfile i ta sama baza - trzymamy to w
+# jednym miejscu, żeby adresy nie rozjechały się między usługami.
+x-backend: &backend
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  environment:
+    - PYTHONUNBUFFERED=1
+    - DATABASE_URL=postgresql+asyncpg://hackathon:hackathon@postgres:5432/hackathon_matching
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -15,21 +25,37 @@ services:
       timeout: 5s
       retries: 10
 
-  backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    ports:
-      - "8000:8000"
-    environment:
-      - PYTHONUNBUFFERED=1
-      - DATABASE_URL=postgresql+asyncpg://hackathon:hackathon@postgres:5432/hackathon_matching
+  # Jednorazowe założenie/uzupełnienie tabel przed startem backendu. Bez tego
+  # świeża baza nie ma tabel, backend jest "niezdrowy" (/health/ready sprawdza
+  # też migracje, #91) i frontend w ogóle nie startuje. Na migracjach, które
+  # już są wykonane, kończy się od razu i nic nie zmienia.
+  #
+  # Gdy baza jest NOWSZA niż kod (powrót na starszą gałąź, wycofane wdrożenie),
+  # alembic nie rozpozna jej wersji i przerwie - a wtedy nie wstanie cały stos.
+  # Jak z tego wyjść: README, "Uruchomienie w Dockerze".
+  #
+  # To ustawienie jest wyłącznie lokalne - Railway nie czyta tego pliku, tam
+  # migracje uruchamia Pre-Deploy Command (README, sekcja Deploy).
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
     depends_on:
       postgres:
         condition: service_healthy
-    # "Zdrowy" = backend odpowiada I dogaduje się z bazą (/health/ready, #91),
-    # a nie tylko "proces żyje". Obraz python:slim nie ma curla, więc pytamy
-    # Pythonem: urlopen rzuca wyjątkiem przy 503, czyli healthcheck oblewa.
+
+  backend:
+    <<: *backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # "Zdrowy" = backend odpowiada, dogaduje się z bazą, a baza ma wykonane
+    # wszystkie migracje (/health/ready, #91) - a nie tylko "proces żyje".
+    # Obraz python:slim nie ma curla, więc pytamy Pythonem: urlopen rzuca
+    # wyjątkiem przy 503, czyli healthcheck oblewa.
     healthcheck:
       test:
         [
@@ -50,10 +76,8 @@ services:
         VITE_API_URL: http://localhost:8000
     ports:
       - "5173:80"
-    # Frontend startuje dopiero, gdy backend dogaduje się z bazą - bez tego
-    # frontend mógł wstać przed backendem. Tabel to nie zakłada: /health/ready
-    # pyta o połączenie, więc na świeżej bazie trzeba jeszcze uruchomić
-    # migracje (README, "Uruchomienie w Dockerze").
+    # Frontend startuje dopiero, gdy backend jest gotowy - bez tego mógł wstać
+    # przed nim, a pierwsze otwarcie strony kończyło się błędem listy.
     depends_on:
       backend:
         condition: service_healthy

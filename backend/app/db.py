@@ -28,9 +28,10 @@ engine = create_async_engine(DATABASE_URL, echo=False)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 # Osobny silnik dla /health/ready (#91), bez puli (NullPool). Każde sprawdzenie
-# otwiera świeże połączenie, więc odpowiada na pytanie "czy DA SIĘ połączyć
-# z bazą" i nie zabiera połączeń prawdziwym żądaniom - także wtedy, gdy
-# przerwane sprawdzenie jeszcze sprząta po sobie (patrz services/health.py).
+# otwiera świeże połączenie, więc sprawdza, czy DA SIĘ połączyć z bazą (a nie
+# tylko, czy działa stare połączenie), i nie zabiera połączeń prawdziwym
+# żądaniom - także wtedy, gdy przerwane sprawdzenie jeszcze sprząta po sobie
+# (patrz services/health.py).
 readiness_engine = create_async_engine(DATABASE_URL, poolclass=NullPool)
 
 
