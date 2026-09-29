@@ -11,8 +11,9 @@ from dataclasses import dataclass, field
 import pytest
 
 from app.enums import ExperienceLevel, PreferredRole
-from app.matching.balanced import balanced_teams, experience_points, objective
+from app.matching.balanced import balanced_teams
 from app.matching.baseline import random_teams, team_sizes
+from app.matching.objective import experience_points, objective
 
 
 @dataclass

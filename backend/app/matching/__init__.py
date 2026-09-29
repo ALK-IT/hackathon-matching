@@ -10,4 +10,11 @@ Warianty i kryteria, które optymalizują, opisuje [README.md](README.md):
 `baseline.random_teams` (punkt odniesienia) i `balanced.balanced_teams`
 (wyrównane doświadczenie, różnorodność ról i umiejętności). Jakość podziału
 mierzy `metrics.score_teams`, a warianty porównuje `python -m app.matching.compare`.
+
+Podział na moduły (#116), od warstwy najniższej:
+
+- `objective` - protokół `Participant` i funkcja celu oceniająca gotowy układ;
+- `repair` - krok 4, czyli naprawa układu wymianami par;
+- `balanced` - orkiestracja czterech kroków algorytmu;
+- `baseline`, `metrics`, `compare` - punkt odniesienia, miara jakości i porównanie.
 """
