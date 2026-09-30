@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { runMatching, toErrorMessage, type Team } from './api'
 import { EXPERIENCE_LEVEL_LABELS, PREFERRED_ROLE_LABELS, labelFor } from './submissionProfile'
+import { colors, fontSizes } from './theme'
 
 // Maksymalny rozmiar zespołu - zgodnie z issue #27 bez pola wyboru. Uwaga:
 // backend traktuje team_size jako GÓRNY LIMIT, nie docelowy rozmiar (przy
@@ -45,7 +46,7 @@ function MatchResults() {
   return (
     <section style={{ maxWidth: '40rem', margin: '3rem auto 0', textAlign: 'left' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '1rem' }}>
-        <h2 style={{ fontSize: '1.1rem' }}>Zespoły</h2>
+        <h2 style={{ fontSize: fontSizes.sectionHeading }}>Zespoły</h2>
         <button type="button" onClick={() => void handleRunMatching()} disabled={status === 'loading'}>
           {status === 'loading' ? 'Matchowanie...' : 'Uruchom matchowanie'}
         </button>
@@ -60,7 +61,7 @@ function MatchResults() {
       {/* role="alert" ogłasza błąd czytnikom ekranu, a prefiks tekstowy
           sygnalizuje go niezależnie od koloru (WCAG 1.4.1 - uwaga z review). */}
       {status === 'error' && errorMessage && (
-        <p role="alert" style={{ color: 'crimson' }}>
+        <p role="alert" style={{ color: colors.error }}>
           Błąd: {errorMessage}
         </p>
       )}
@@ -76,7 +77,7 @@ function MatchResults() {
           // Key i numer nagłówka z tego samego źródła (uwaga z review): lista
           // jest podmieniana w całości po każdym przebiegu, nigdy nie
           // przestawiana w miejscu, więc indeks jest tu stabilnym kluczem.
-          <article key={index} style={{ border: '1px solid #ccc', borderRadius: '4px', padding: '.75rem 1rem', marginTop: '1rem' }}>
+          <article key={index} style={{ border: `1px solid ${colors.border}`, borderRadius: '4px', padding: '.75rem 1rem', marginTop: '1rem' }}>
             <h3 style={{ fontSize: '1rem', margin: '0 0 .5rem' }}>
               Zespół {index + 1} ({team.members.length} os.)
             </h3>
