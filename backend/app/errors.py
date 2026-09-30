@@ -12,6 +12,8 @@ from fastapi import Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.settings import settings
+
 # Komunikat dobieramy po nazwie pola, a nie po typie błędu z pydantica:
 # uczestnika nie interesuje, czy adres odpadł na braku kropki, czy na braku
 # małpy - w obu przypadkach ma zrobić dokładnie to samo.
@@ -25,7 +27,12 @@ FIELD_MESSAGES: dict[str, str] = {
     # Parametry matchowania przychodzą w query stringu, nie w formularzu, ale
     # trafiają do tej samej odpowiedzi 422 - bez wpisu tutaj uczestnik zobaczyłby
     # ogólne "Niepoprawne dane w formularzu.", które nic mu nie mówi o adresie.
-    "team_size": "Rozmiar zespołu musi być liczbą od 1 do 20.",
+    # Zakres z ustawień, nie wpisany na sztywno - inaczej po zmianie limitu
+    # komunikat mówiłby co innego, niż naprawdę sprawdza API.
+    "team_size": (
+        f"Rozmiar zespołu musi być liczbą od {settings.min_team_size} "
+        f"do {settings.max_team_size}."
+    ),
     "algorithm": "Wybierz algorytm matchowania: 'balanced' albo 'random'.",
 }
 

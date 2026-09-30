@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db import DATABASE_URL
 from app.main import app
+from app.routers.matching import MAX_TEAM_SIZE, MIN_TEAM_SIZE
 from app.services import matching as service
 
 client = TestClient(app)
@@ -207,7 +208,9 @@ def test_default_team_size_is_used(participants: str) -> None:
     assert all(len(team["members"]) <= 4 for team in response.json())
 
 
-@pytest.mark.parametrize("team_size", [0, -1, 21, "cztery"])
+# Granice z ustawień (#95), a nie wpisane na sztywno - test ma sprawdzać
+# walidację, a nie to, czy ktoś zmienił MAX_TEAM_SIZE w backend/.env.
+@pytest.mark.parametrize("team_size", [0, -1, MAX_TEAM_SIZE + 1, "cztery"])
 def test_invalid_team_size_returns_422(team_size: object) -> None:
     """Rozmiar spoza zakresu odsiewa walidacja, a nie algorytm w środku."""
     response = client.post("/api/match", params={"team_size": team_size})
@@ -231,7 +234,7 @@ def test_validation_message_is_in_polish() -> None:
     response = client.post("/api/match", params={"team_size": 0})
 
     messages = [error["msg"] for error in response.json()["detail"]]
-    assert messages == ["Rozmiar zespołu musi być liczbą od 1 do 20."]
+    assert messages == [f"Rozmiar zespołu musi być liczbą od {MIN_TEAM_SIZE} do {MAX_TEAM_SIZE}."]
 
 
 def test_empty_database_returns_409(monkeypatch: pytest.MonkeyPatch) -> None:

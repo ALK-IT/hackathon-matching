@@ -7,7 +7,8 @@ API otwartym dla dowolnej strony albo zamkniętym dla własnego frontendu.
 
 from fastapi.testclient import TestClient
 
-from app.main import DEFAULT_ALLOWED_ORIGINS, allowed_origins, app
+from app.main import app
+from app.settings import DEFAULT_ALLOWED_ORIGINS, allowed_origins, settings
 
 client = TestClient(app)
 
@@ -18,7 +19,7 @@ FOREIGN_ORIGIN = "https://evil.example"
 # Aplikacja skonfigurowała middleware przy imporcie, więc testy HTTP muszą
 # pytać o tę samą listę, a nie o stałą domyślną - inaczej wywracałyby się
 # u kogoś, kto ma ustawione CORS_ALLOWED_ORIGINS w swoim środowisku.
-ALLOWED_ORIGIN = allowed_origins()[0]
+ALLOWED_ORIGIN = settings.cors_origins[0]
 
 
 def test_pusta_zmienna_zostawia_domyslne_originy() -> None:
@@ -47,7 +48,7 @@ def test_gwiazdka_nie_jest_juz_domyslna() -> None:
 
 
 def test_wlasny_front_dostaje_naglowek_cors() -> None:
-    response = client.get("/api/hello", headers={"Origin": ALLOWED_ORIGIN})
+    response = client.get("/health", headers={"Origin": ALLOWED_ORIGIN})
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == ALLOWED_ORIGIN
@@ -56,7 +57,7 @@ def test_wlasny_front_dostaje_naglowek_cors() -> None:
 def test_obca_strona_nie_dostaje_naglowka_cors() -> None:
     """Odpowiedź powstaje (CORS nie blokuje serwera), ale bez nagłówka
     przeglądarka nie pozwoli obcej stronie odczytać jej treści."""
-    response = client.get("/api/hello", headers={"Origin": FOREIGN_ORIGIN})
+    response = client.get("/health", headers={"Origin": FOREIGN_ORIGIN})
 
     assert response.status_code == 200
     assert "access-control-allow-origin" not in response.headers

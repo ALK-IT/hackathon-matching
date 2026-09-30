@@ -9,6 +9,7 @@ from app.matching.baseline import random_teams
 from app.models import Submission, Team
 from app.repositories import submissions as submissions_repository
 from app.repositories import teams as teams_repository
+from app.settings import settings
 
 
 class NoSubmissionsError(Exception):
@@ -24,7 +25,7 @@ class TooManyParticipantsError(Exception):
 
 
 # Limit PULI DO MATCHOWANIA - celowo niższy niż limit rejestracji
-# (`MAX_TOTAL_SUBMISSIONS` = 3000) i celowo nie wyprowadzony z niego.
+# (`MAX_TOTAL_SUBMISSIONS`, domyślnie 3000) i celowo nie wyprowadzony z niego.
 #
 # To dwie różne populacje w modelu docelowym: uczestnik będzie mógł wybrać
 # zespół samodzielnie, więc do algorytmu trafi tylko ta część zgłoszonych,
@@ -37,11 +38,8 @@ class TooManyParticipantsError(Exception):
 # hackatonu ALK to stan nieosiągalny; gdy pojawi się pula "do matchowania",
 # sprawdzenie ma liczyć właśnie ją, nie `len(submissions)`.
 #
-# Zapadka nie chroni CPU - tym zajmuje się budżet pracy w _swap_repair (patrz
-# balanced.py), przy 2000 osób przebieg trwa ~1,7 s. Chodzi o rzeczy wtórne,
-# przede wszystkim rozmiar odpowiedzi: JSON z pełnymi składami to przy tej
-# wartości ~0,5 MB.
-MAX_MATCHED_PARTICIPANTS = 2000
+# Wartość i jej uzasadnienie (rozmiar odpowiedzi, a nie CPU) - w app/settings.py.
+MAX_MATCHED_PARTICIPANTS = settings.max_matched_participants
 
 
 # Mapa "nazwa z API -> funkcja". Dzięki niej router nie musi wiedzieć nic

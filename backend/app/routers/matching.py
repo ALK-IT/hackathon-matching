@@ -5,17 +5,18 @@ from app.db import get_session
 from app.enums import MatchingAlgorithm
 from app.schemas import TeamOut
 from app.services import matching as service
+from app.settings import settings
 
 router = APIRouter(prefix="/api/match", tags=["matching"])
 
-# Górny limit rozmiaru zespołu. Nie wynika z algorytmu (ten poradzi sobie
-# z każdą liczbą), tylko z tego, że wartość przychodzi z zewnątrz i nie ma
-# powodu przyjmować liczb bez związku z hackatonem (patrz SECURITY.md).
-# Dolna granica to 1, czyli tyle, ile dopuszcza `team_sizes` - API nie
-# zaostrza kontraktu algorytmu, tylko go nie łamie.
-MIN_TEAM_SIZE = 1
-MAX_TEAM_SIZE = 20
-DEFAULT_TEAM_SIZE = 4
+# Zakres rozmiaru zespołu - wartości i ich uzasadnienie w app/settings.py.
+MIN_TEAM_SIZE = settings.min_team_size
+MAX_TEAM_SIZE = settings.max_team_size
+
+# Domyślny rozmiar, gdy żądanie go nie poda. Przycięty do zakresu, bo zakres
+# da się zmienić w konfiguracji - bez tego np. MAX_TEAM_SIZE=3 odrzucałoby
+# żądanie BEZ parametru, którego użytkownik w ogóle nie podał.
+DEFAULT_TEAM_SIZE = min(max(4, MIN_TEAM_SIZE), MAX_TEAM_SIZE)
 
 
 @router.post("", response_model=list[TeamOut], status_code=status.HTTP_201_CREATED)

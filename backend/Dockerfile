@@ -7,8 +7,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app ./app
 
-# Alembic w obrazie, zeby dalo sie migrowac baze z dzialajacego kontenera:
-# docker compose exec backend alembic upgrade head
+# Alembic w obrazie jest WYMAGANY w czasie dzialania: sprawdzanie gotowosci
+# (/health/ready, #91) czyta z tego katalogu, ktorych migracji oczekuje kod,
+# i bez niego backend w ogole nie wstanie. Przy okazji pozwala migrowac baze
+# z dzialajacego kontenera: docker compose exec backend alembic upgrade head
 COPY backend/alembic.ini .
 COPY backend/alembic ./alembic
 

@@ -1,6 +1,6 @@
 # SPEC-001: Hello World — szkielet frontend/backend
 
-**Status:** Zaimplementowany
+**Status:** Wycofany
 **Data:** 2026-08-12
 **Autor:** wygenerowano przez setup-alk-repo.ps1
 
@@ -37,3 +37,4 @@ Nowy projekt studencki potrzebuje działającego od zera szkieletu: frontend roz
 ## Changelog
 
 - 2026-08-12 — utworzono i zaimplementowano spec (initial scaffold)
+- 2026-09-18 — wycofany: `GET /api/hello` usunięty w #91 (sprawdzanie działania backendu przejęły `GET /health` i `GET /health/ready`), a otwarty CORS (`*`) zawężono już w #60
